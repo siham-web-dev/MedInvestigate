@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String     @id @default(cuid())
+  email                 String     @unique
+  firstName             String
+  lastName              String
+  organization          String?
+  password              String     // bcrypt hashed
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+}
+
+model Incident {
+  id          String   @id @default(cuid())
+  deviceId    String
+  severity    String   // Critical | High | Medium | Low
+  status      String   // Open | InProgress | Resolved | Closed
+  description String
+
+  attachments String?  // JSON array of file URLs or references
+  reportedAt  DateTime @default(now())
+
+  investigation Investigation?
+  auditLogs   AuditLog[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Investigation {
+  id            String   @id @default(cuid())
+  incidentId    String   @unique
+  incident      Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  phase         String   // Intake | Analysis | Review | Closed
+  assignedTo    String?
+
+  findings      String?  // JSON array of findings
+  notes         String?
+
+  agentTasks    AgentTask[]
+  auditLogs     AuditLog[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AgentTask {
+  id              String      @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  type            String      // Classification | RootCause | ReportGeneration
+  status          String      // Pending | Running | Done | Failed
+  result          String?     // JSON result from agent
+
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model AuditLog {
+  id              String      @id @default(cuid())
+
+  incidentId      String?
+  incident        Incident?   @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+
+  investigationId String?
+  investigation   Investigation? @relation(fields: [investigationId], references: [id], onDelete: SetNull)
+
+  action          String      // "created" | "updated" | "closed" | etc
+  details         String?     // JSON details
+
+  createdAt       DateTime    @default(now())
+}

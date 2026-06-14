@@ -5,6 +5,7 @@ import {
   FlaskConical, ChevronDown, Menu, X, LogOut,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 const NAV = [
   {
@@ -33,6 +34,11 @@ const PAGE_TITLES: Record<string, string> = {
 
 function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const initials = user
+    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
+    : 'SC';
 
   return (
     <div className="w-[220px] flex-shrink-0 flex flex-col h-full" style={{ background: 'var(--sidebar)' }}>
@@ -86,11 +92,15 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       <div className="px-3 py-3 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
         <div className="flex items-center gap-2.5 px-1.5 py-1.5 rounded-md cursor-pointer hover:bg-white/5 transition-colors">
           <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-[10px] font-semibold">SC</span>
+            <span className="text-white text-[10px] font-semibold">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-white truncate">Dr. Sarah Chen</div>
-            <div className="text-[10px] truncate" style={{ color: 'var(--sidebar-foreground)', opacity: 0.5 }}>Investigator</div>
+            <div className="text-xs font-medium text-white truncate">
+              {user ? `${user.firstName} ${user.lastName}` : 'User'}
+            </div>
+            <div className="text-[10px] truncate" style={{ color: 'var(--sidebar-foreground)', opacity: 0.5 }}>
+              {user?.organization || 'Organization'}
+            </div>
           </div>
           <ChevronDown size={12} style={{ color: 'var(--sidebar-foreground)', opacity: 0.4 }} />
         </div>
@@ -102,6 +112,7 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 function TopBar({ onMenuToggle, isSmallScreen }: { onMenuToggle: () => void; isSmallScreen: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -120,8 +131,13 @@ function TopBar({ onMenuToggle, isSmallScreen }: { onMenuToggle: () => void; isS
 
   const handleLogout = () => {
     setUserMenuOpen(false);
-    navigate('/');
+    logout();
+    navigate('/login');
   };
+
+  const initials = user
+    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
+    : 'SC';
 
   const title = PAGE_TITLES[location.pathname] ??
     (location.pathname.startsWith('/investigations/') ? 'Investigation Workspace' : '');
@@ -172,7 +188,7 @@ function TopBar({ onMenuToggle, isSmallScreen }: { onMenuToggle: () => void; isS
           onClick={() => setUserMenuOpen(!userMenuOpen)}
           className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center cursor-pointer flex-shrink-0 hover:bg-blue-700 transition-colors"
         >
-          <span className="text-white text-[10px] font-semibold">SC</span>
+          <span className="text-white text-[10px] font-semibold">{initials}</span>
         </button>
 
         {userMenuOpen && (

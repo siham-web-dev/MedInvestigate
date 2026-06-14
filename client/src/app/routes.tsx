@@ -8,6 +8,7 @@ import NewIncident from './pages/NewIncident';
 import Investigations from './pages/Investigations';
 import InvestigationWorkspace from './pages/InvestigationWorkspace';
 import Settings from './pages/Settings';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 export const router = createBrowserRouter([
   {
@@ -27,11 +28,46 @@ export const router = createBrowserRouter([
     Component: Shell,
     children: [
       { index: true, loader: () => redirect('/dashboard') },
-      { path: 'dashboard', Component: Dashboard },
-      { path: 'incidents/new', Component: NewIncident },
-      { path: 'investigations', Component: Investigations },
-      { path: 'investigations/:id', Component: InvestigationWorkspace },
-      { path: 'settings', Component: Settings },
+      {
+        path: 'dashboard',
+        Component: () => (
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'incidents/new',
+        Component: () => (
+          <ProtectedRoute>
+            <NewIncident />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'investigations',
+        Component: () => (
+          <ProtectedRoute>
+            <Investigations />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'investigations/:id',
+        Component: () => (
+          <ProtectedRoute>
+            <InvestigationWorkspace />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'settings',
+        Component: () => (
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
 ]);

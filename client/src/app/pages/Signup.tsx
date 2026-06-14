@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { FlaskConical, Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Signup() {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -61,10 +63,21 @@ export default function Signup() {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      await register({
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        organization: formData.organization,
+      });
       navigate('/dashboard');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setError(errorMessage);
       setIsLoading(false);
-    }, 600);
+    }
   };
 
   return (

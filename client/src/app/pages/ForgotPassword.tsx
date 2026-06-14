@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { FlaskConical, ArrowLeft, ArrowRight, Mail, Check } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const { forgotPassword, verifyResetCode, resetPassword } = useAuth();
   const [step, setStep] = useState<'email' | 'verify' | 'reset'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -23,11 +25,17 @@ export default function ForgotPassword() {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      await forgotPassword(email);
       setStep('verify');
       setSuccess('Reset code sent to your email');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send reset code';
+      setError(errorMessage);
+    } finally {
       setIsLoading(false);
-    }, 600);
+    }
   };
 
   const handleVerifySubmit = async (e: React.FormEvent) => {
@@ -40,11 +48,17 @@ export default function ForgotPassword() {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      await verifyResetCode(email, code);
       setStep('reset');
       setSuccess('');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Invalid verification code';
+      setError(errorMessage);
+    } finally {
       setIsLoading(false);
-    }, 600);
+    }
   };
 
   const handleResetSubmit = async (e: React.FormEvent) => {
@@ -68,11 +82,17 @@ export default function ForgotPassword() {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      await resetPassword(email, code, password);
       setSuccess('Password reset successfully! Redirecting to login...');
       setTimeout(() => navigate('/login'), 1500);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reset password';
+      setError(errorMessage);
+    } finally {
       setIsLoading(false);
-    }, 600);
+    }
   };
 
   return (

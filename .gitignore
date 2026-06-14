@@ -1,1 +1,10 @@
 node_modules
+dist
+*.db
+.env
+.env.local
+.env.*.local
+server/node_modules
+client/node_modules
+pnpm-lock.yaml
+server/migrations/*

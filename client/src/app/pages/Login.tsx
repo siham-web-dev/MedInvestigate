@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { FlaskConical, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -15,14 +17,20 @@ export default function Login() {
     setError("");
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (email && password) {
-        navigate("/dashboard");
-      } else {
+    try {
+      if (!email || !password) {
         setError("Please enter your email and password");
+        setIsLoading(false);
+        return;
       }
+
+      await login(email, password);
+      navigate("/dashboard");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Login failed. Please try again.";
+      setError(errorMessage);
       setIsLoading(false);
-    }, 600);
+    }
   };
 
   return (
