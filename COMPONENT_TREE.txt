@@ -1,0 +1,118 @@
+Component Structure After Decomposition
+
+src/app/
+├── pages/
+│   ├── Dashboard.tsx (refactored)
+│   │   └── Uses: DashboardHeader, KpiCard, RecentInvestigationsTable, AgentActivityFeed, QuickActionsPanel
+│   │
+│   ├── NewIncident.tsx (refactored)
+│   │   └── Uses: FormSection, FormField, FileUploadArea, AiClassificationPanel, PreviousReviewsPanel
+│   │
+│   ├── Investigations.tsx (refactored)
+│   │   └── Uses: InvestigationsHeader, FilterSelect, InvestigationsTable
+│   │
+│   └── InvestigationWorkspace.tsx (refactored)
+│       └── Uses: InvestigationHeader, TabNavigation, AgentCard, MsgBubble
+│           ├── OverviewTab (with PanelSection, Detail, FindingItem)
+│           ├── AgentsTab
+│           ├── GraphTab
+│           ├── ReviewTab (placeholder)
+│           ├── ReportTab (placeholder)
+│           └── AuditTab (placeholder)
+│
+├── components/
+│   ├── shared/
+│   │   └── badges.tsx
+│   │       ├── SeverityBadge
+│   │       ├── StatusBadge
+│   │       └── Badge
+│   │
+│   ├── dashboard/
+│   │   ├── DashboardHeader.tsx
+│   │   ├── KpiCard.tsx
+│   │   ├── RecentInvestigationsTable.tsx
+│   │   ├── AgentActivityFeed.tsx
+│   │   └── QuickActionsPanel.tsx
+│   │
+│   ├── incidents/
+│   │   ├── FormSection.tsx (FormSection, FormField)
+│   │   ├── FileUploadArea.tsx
+│   │   ├── AiClassificationPanel.tsx
+│   │   └── PreviousReviewsPanel.tsx
+│   │
+│   ├── investigations/
+│   │   ├── InvestigationsHeader.tsx
+│   │   ├── FilterSelect.tsx
+│   │   └── InvestigationsTable.tsx
+│   │
+│   └── workspace/
+│       ├── InvestigationHeader.tsx
+│       ├── TabNavigation.tsx
+│       ├── PanelSection.tsx (PanelSection, Detail, FindingItem)
+│       ├── AgentCard.tsx
+│       ├── MsgBubble.tsx
+│       └── tabs/
+│           ├── index.ts
+│           ├── OverviewTab.tsx
+│           ├── GraphTab.tsx
+│           ├── ReviewTab.tsx
+│           ├── ReportTab.tsx
+│           └── AuditTab.tsx
+│
+└── data/
+    └── investigationData.ts
+        ├── INCIDENT
+        ├── ALL_MESSAGES
+        ├── AGENTS
+        └── HYPOTHESES
+
+
+Component Reuse Matrix
+======================
+
+SeverityBadge:
+  ✓ Dashboard (RecentInvestigationsTable)
+  ✓ Investigations (InvestigationsTable)
+  ✓ InvestigationWorkspace (OverviewTab)
+
+StatusBadge:
+  ✓ Dashboard (RecentInvestigationsTable)
+  ✓ Investigations (InvestigationsTable)
+  ✓ InvestigationWorkspace (OverviewTab)
+
+FormSection/FormField:
+  ✓ NewIncident (Device Information, Incident Details, Supporting Documentation)
+
+FilterSelect:
+  ✓ Investigations (severity, status filters)
+
+AgentCard:
+  ✓ InvestigationWorkspace (Agents tab, Graph tab)
+
+MsgBubble:
+  ✓ InvestigationWorkspace (Agents tab, Overview tab)
+
+PanelSection/Detail/FindingItem:
+  ✓ InvestigationWorkspace (Overview tab)
+
+
+File Statistics
+===============
+
+Original State:
+  - Dashboard.tsx: 235 lines
+  - NewIncident.tsx: 640 lines
+  - Investigations.tsx: 264 lines
+  - InvestigationWorkspace.tsx: 1,813 lines
+  TOTAL: 2,952 lines in 4 pages
+
+After Decomposition:
+  - Dashboard.tsx: 68 lines (71% reduction)
+  - NewIncident.tsx: 178 lines (72% reduction)
+  - Investigations.tsx: 81 lines (69% reduction)
+  - InvestigationWorkspace.tsx: 143 lines (92% reduction)
+  - Extracted Components: ~2,100 lines across 20+ files
+
+  Pages average component size: 117 lines
+  Extracted components average: ~90 lines
+  Best practice: Components stay under 150 lines for maintainability
