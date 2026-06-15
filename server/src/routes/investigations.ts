@@ -12,6 +12,9 @@ router.post('/', investigationController.createInvestigation)
 router.get('/', investigationController.listInvestigations)
 router.get('/:id', investigationController.getInvestigation)
 router.patch('/:id', investigationController.updateInvestigation)
+router.patch('/:id/review', investigationController.updateReview)
 router.get('/:id/audit', investigationController.getAuditTrail)
+router.get('/:id/agent-logs', investigationController.getAgentActivityLogs)
+router.get('/:id/report', investigationController.getInvestigationReport)
 
 export default router

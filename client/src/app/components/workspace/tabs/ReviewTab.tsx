@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Check, X, ThumbsUp, ThumbsDown, RefreshCw, Send } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router';
+import { useSelector } from 'react-redux';
+import { Check, X, ThumbsUp, ThumbsDown, RefreshCw, Send, Loader2 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -8,6 +10,8 @@ import {
   SheetDescription,
   SheetFooter,
 } from '../../ui/sheet';
+import type { RootState } from '../../../store/store';
+import { API_ENDPOINTS } from '../../../../api/config';
 
 interface Recommendation {
   id: string;
@@ -66,11 +70,78 @@ const RECOMMENDATIONS: Recommendation[] = [
   },
 ];
 
+interface Recommendation {
+  id: string;
+  icon: React.ElementType;
+  label: string;
+  color: 'blue' | 'red' | 'green';
+  text: string;
+  details: string;
+  context: string[];
+}
+
 export function ReviewTab() {
+  const { id } = useParams();
+  const { token } = useSelector((state: RootState) => state.auth);
   const [comment, setComment] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
   const [selectedReco, setSelectedReco] = useState<string | null>(null);
   const [acceptedRecos, setAcceptedRecos] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [loadingRecos, setLoadingRecos] = useState(true);
+
+  useEffect(() => {
+    const fetchRecommendations = async () => {
+      if (!id || !token) return;
+
+      try {
+        const response = await fetch(API_ENDPOINTS.investigationReport(id!), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Map backend recommendations to UI format
+          const mappedRecos = data.recommendations.map((reco: any) => ({
+            ...reco,
+            icon: () => null,
+          }));
+          setRecommendations(mappedRecos);
+        }
+      } catch (error) {
+        console.error('[REVIEW] Failed to fetch recommendations:', error);
+      } finally {
+        setLoadingRecos(false);
+      }
+    };
+
+    fetchRecommendations();
+  }, [id, token]);
+
+  const saveReview = async (status: 'approved' | 'rejected' | 'more-analysis') => {
+    if (!id || !token) return;
+
+    setSaving(true);
+    try {
+      await fetch(API_ENDPOINTS.investigationReview(id!), {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reviewNotes: comment,
+          reviewStatus: status,
+          recommendations: Array.from(acceptedRecos),
+        }),
+      });
+    } catch (error) {
+      console.error('[REVIEW] Failed to save review:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const history = [
     {
@@ -112,32 +183,53 @@ export function ReviewTab() {
             </h4>
           </div>
           <div className="p-4 space-y-3">
-            {RECOMMENDATIONS.map((reco) => (
-              <button
-                key={reco.id}
-                onClick={() => setSelectedReco(reco.id)}
-                className="w-full text-left hover:opacity-80 transition-opacity"
-              >
-                <RecoItem
-                  label={reco.label}
-                  color={reco.color}
-                  text={reco.text}
-                  accepted={acceptedRecos.has(reco.id)}
-                />
-              </button>
-            ))}
+            {recommendations.length > 0 ? (
+              recommendations.map((reco) => (
+                <button
+                  key={reco.id}
+                  onClick={() => setSelectedReco(reco.id)}
+                  className="w-full text-left hover:opacity-80 transition-opacity"
+                >
+                  <RecoItem
+                    label={reco.label}
+                    color={reco.color}
+                    text={reco.text}
+                    accepted={acceptedRecos.has(reco.id)}
+                  />
+                </button>
+              ))
+            ) : (
+              <p className="text-xs text-muted-foreground px-3 py-2">
+                {loadingRecos ? 'Loading recommendations...' : 'No recommendations available yet'}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors">
-            <ThumbsUp size={16} /> Approve Investigation
+          <button
+            onClick={() => saveReview('approved')}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
+            Approve Investigation
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 transition-colors">
-            <ThumbsDown size={16} /> Reject
+          <button
+            onClick={() => saveReview('rejected')}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <ThumbsDown size={16} />}
+            Reject
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-background border border-border text-foreground text-sm font-medium rounded-md hover:bg-muted transition-colors">
-            <RefreshCw size={16} /> Request More Analysis
+          <button
+            onClick={() => saveReview('more-analysis')}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-background border border-border text-foreground text-sm font-medium rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Request More Analysis
           </button>
         </div>
 
@@ -249,8 +341,13 @@ export function ReviewTab() {
               </select>
             </div>
             <div className="flex justify-end">
-              <button className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
-                <Send size={14} /> Add Comment
+              <button
+                onClick={() => saveReview('approved')}
+                disabled={saving || !comment.trim()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Add Comment
               </button>
             </div>
           </div>

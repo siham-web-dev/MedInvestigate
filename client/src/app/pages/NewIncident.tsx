@@ -133,8 +133,8 @@ export default function NewIncident() {
         manufacturer: form.manufacturer,
       });
 
-      // Navigate to the investigations page with the new incident
-      navigate(`/investigations/${incident.id}`);
+      // Navigate to the investigations page with the investigation ID
+      navigate(`/investigations/${(incident as any).investigationId || incident.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create incident";
       setError(message);

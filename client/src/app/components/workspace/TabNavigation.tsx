@@ -14,14 +14,24 @@ const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
 export function TabNavigation({
   activeTab,
   onTabChange,
+  investigationPhase,
 }: {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  investigationPhase?: string;
 }) {
+  // Show report and review tabs only when investigation is complete or review phase
+  const isComplete = investigationPhase === 'Review' || investigationPhase === 'Complete';
+
+  const visibleTabs = TABS.filter((t) => {
+    if (t.id === 'report' && !isComplete) return false;
+    return true;
+  });
+
   return (
     <div className="bg-card border-b border-border px-4 md:px-5 flex-shrink-0 overflow-x-auto">
       <nav className="flex gap-1">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.id}
             onClick={() => onTabChange(t.id)}

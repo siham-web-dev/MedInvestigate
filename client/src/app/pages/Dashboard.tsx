@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { KpiCard } from '../components/dashboard/KpiCard';
 import { RecentInvestigationsTable } from '../components/dashboard/RecentInvestigationsTable';
@@ -6,54 +8,183 @@ import { QuickActionsPanel } from '../components/dashboard/QuickActionsPanel';
 import {
   AlertTriangle, Activity, Clock, FileCheck,
 } from 'lucide-react';
+import type { RootState } from '../../store/store';
+import { API_ENDPOINTS } from '../../api/config';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
-type Status = 'investigating' | 'in-review' | 'approved' | 'draft' | 'submitted';
+type Status = 'investigating' | 'in-review' | 'approved' | 'draft' | 'submitted' | 'closed';
 
-const INVESTIGATIONS = [
-  { id: 'MDR-2024-0891', device: 'CardioSync Pro 3000', manufacturer: 'CardioSync Medical', severity: 'critical' as Severity, status: 'in-review' as Status, reviewer: 'Dr. Sarah Chen', created: 'Jan 15, 2024', updated: '2h ago' },
-  { id: 'MDR-2024-0887', device: 'InfuSmart IV Pump', manufacturer: 'PharmaTech Inc.', severity: 'high' as Severity, status: 'investigating' as Status, reviewer: 'James Rodriguez', created: 'Jan 14, 2024', updated: '5h ago' },
-  { id: 'MDR-2024-0883', device: 'NeuroPace RNS System', manufacturer: 'NeuroPace Inc.', severity: 'high' as Severity, status: 'submitted' as Status, reviewer: 'Dr. Priya Nair', created: 'Jan 13, 2024', updated: '1d ago' },
-  { id: 'MDR-2024-0879', device: 'Medtronic MiniMed 780G', manufacturer: 'Medtronic', severity: 'medium' as Severity, status: 'in-review' as Status, reviewer: 'Dr. Marcus Liu', created: 'Jan 12, 2024', updated: '1d ago' },
-  { id: 'MDR-2024-0874', device: 'LifeVest WCD 4000', manufacturer: 'Zoll Medical', severity: 'medium' as Severity, status: 'approved' as Status, reviewer: 'Rachel Torres', created: 'Jan 11, 2024', updated: '2d ago' },
-  { id: 'MDR-2024-0869', device: 'Inspire Upper Airway Stim', manufacturer: 'Inspire Medical', severity: 'low' as Severity, status: 'draft' as Status, reviewer: 'Unassigned', created: 'Jan 10, 2024', updated: '3d ago' },
-];
+interface Investigation {
+  id: string;
+  device: string;
+  manufacturer: string;
+  severity: Severity;
+  status: Status;
+  reviewer: string;
+  created: string;
+  updated: string;
+}
 
-const AGENT_ACTIVITY = [
-  { id: 1, agent: 'Regulatory Agent', action: 'Completed FDA MAUDE analysis for MDR-2024-0891', time: '2m ago', status: 'done' as const, color: '#0891B2' },
-  { id: 2, agent: 'Risk Agent', action: 'Risk score updated to 9.2/10 — Critical escalation triggered', time: '7m ago', status: 'done' as const, color: '#DC2626' },
-  { id: 3, agent: 'Technical Agent', action: 'Device telemetry analysis in progress for MDR-2024-0887', time: '12m ago', status: 'active' as const, color: '#D97706' },
-  { id: 4, agent: 'Clinical Agent', action: 'Adverse event classified under MedDRA terminology', time: '18m ago', status: 'done' as const, color: '#059669' },
-  { id: 5, agent: 'Supervisor Agent', action: 'Dispatched 4 agents for parallel analysis of MDR-2024-0883', time: '31m ago', status: 'done' as const, color: '#6366F1' },
-  { id: 6, agent: 'Report Agent', action: 'Executive summary generated for MDR-2024-0874', time: '1h ago', status: 'done' as const, color: '#7C3AED' },
-  { id: 7, agent: 'Regulatory Agent', action: 'EU MDR Article 87 compliance check initiated', time: '2h ago', status: 'done' as const, color: '#0891B2' },
-];
+interface AgentActivity {
+  id: number;
+  agent: string;
+  action: string;
+  time: string;
+  status: 'active' | 'done';
+  color: string;
+}
 
-const KPI = [
-  { label: 'Total Incidents', value: '1,247', delta: '+23', up: true, icon: FileCheck, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { label: 'Active Investigations', value: '34', delta: '-3', up: false, icon: Activity, color: 'text-violet-600', bg: 'bg-violet-50' },
-  { label: 'Critical Cases', value: '8', delta: '+2', up: true, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-  { label: 'Pending Reviews', value: '17', delta: '+5', up: true, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-];
+interface KPI {
+  label: string;
+  value: string;
+  delta: string;
+  up: boolean;
+  icon: any;
+  color: string;
+  bg: string;
+}
 
 export default function Dashboard() {
+  const { token } = useSelector((state: RootState) => state.auth);
+  const [investigations, setInvestigations] = useState<Investigation[]>([]);
+  const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
+  const [kpis, setKpis] = useState<KPI[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [token]);
+
+  const fetchDashboardData = async () => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      console.log('[DASHBOARD] Fetching dashboard data');
+      setIsLoading(true);
+
+      // Fetch investigations
+      const invResponse = await fetch(`${API_ENDPOINTS.investigations}?limit=6`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (invResponse.ok) {
+        const invData = await invResponse.json();
+        const transformed = Array.isArray(invData) ? invData.map((inv: any) => ({
+          id: inv.id,
+          device: inv.incident?.deviceName || 'Unknown Device',
+          manufacturer: inv.incident?.manufacturer || 'Unknown',
+          severity: (inv.incident?.severity?.toLowerCase() || 'medium') as Severity,
+          status: (inv.phase?.toLowerCase().replace(' ', '-') || 'draft') as Status,
+          reviewer: inv.assignedTo || 'Unassigned',
+          created: inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'N/A',
+          updated: inv.updatedAt ? getRelativeTime(new Date(inv.updatedAt)) : 'N/A',
+        })) : [];
+        setInvestigations(transformed.slice(0, 6));
+        console.log('[DASHBOARD] Investigations loaded:', transformed.length);
+      }
+
+      // Fetch agent activities
+      const actResponse = await fetch(`${API_ENDPOINTS.agentActivities}?limit=7`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (actResponse.ok) {
+        const actData = await actResponse.json();
+        const transformed = Array.isArray(actData) ? actData.map((act: any, idx: number) => ({
+          id: idx + 1,
+          agent: act.agentName || 'Unknown Agent',
+          action: act.message || 'Processing...',
+          time: act.timestamp ? getRelativeTime(new Date(act.timestamp)) : 'Recently',
+          status: (act.status === 'Alert' || act.status === 'active') ? 'active' : 'done',
+          color: getAgentColor(act.agentType),
+        })) : [];
+        setAgentActivities(transformed.slice(0, 7));
+        console.log('[DASHBOARD] Agent activities loaded:', transformed.length);
+      }
+
+      // Calculate KPIs from investigations
+      const stats = calculateKpis(invData || []);
+      setKpis(stats);
+      console.log('[DASHBOARD] KPIs calculated');
+    } catch (error) {
+      console.error('[DASHBOARD] Error fetching data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getRelativeTime = (date: Date): string => {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getAgentColor = (agentType: string): string => {
+    const colors: Record<string, string> = {
+      'Supervisor': '#6366F1',
+      'Regulatory': '#0891B2',
+      'Clinical': '#059669',
+      'Technical': '#D97706',
+      'Risk': '#DC2626',
+      'Report': '#7C3AED',
+    };
+    return colors[agentType] || '#6366F1';
+  };
+
+  const calculateKpis = (invData: any[]): KPI[] => {
+    const investigations = Array.isArray(invData) ? invData : [];
+    const total = investigations.length;
+    const active = investigations.filter((i: any) => i.phase === 'Analysis' || i.phase === 'Intake').length;
+    const critical = investigations.filter((i: any) => i.incident?.severity?.toLowerCase() === 'critical').length;
+    const pending = investigations.filter((i: any) => i.phase === 'Review').length;
+
+    return [
+      { label: 'Total Incidents', value: total.toString(), delta: '+0', up: false, icon: FileCheck, color: 'text-blue-600', bg: 'bg-blue-50' },
+      { label: 'Active Investigations', value: active.toString(), delta: '0', up: false, icon: Activity, color: 'text-violet-600', bg: 'bg-violet-50' },
+      { label: 'Critical Cases', value: critical.toString(), delta: '0', up: false, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+      { label: 'Pending Reviews', value: pending.toString(), delta: '0', up: false, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    ];
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
+        <DashboardHeader />
+        <div className="text-center py-12 text-muted-foreground">
+          Loading dashboard...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
       <DashboardHeader />
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
-        {KPI.map((k) => (
+        {kpis.map((k) => (
           <KpiCard key={k.label} kpi={k} />
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-        <RecentInvestigationsTable investigations={INVESTIGATIONS} />
+        <RecentInvestigationsTable investigations={investigations} />
 
         {/* Right column */}
         <div className="flex flex-col gap-4">
-          <AgentActivityFeed activities={AGENT_ACTIVITY} />
+          <AgentActivityFeed activities={agentActivities} />
           <QuickActionsPanel />
         </div>
       </div>

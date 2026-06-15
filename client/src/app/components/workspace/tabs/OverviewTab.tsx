@@ -1,6 +1,6 @@
-import { Loader2 } from 'lucide-react';
-import { PanelSection, Detail, FindingItem } from '../PanelSection';
-import { AgentMessage, MsgBubble } from '../MsgBubble';
+import { Loader2 } from "lucide-react";
+import { PanelSection, Detail, FindingItem } from "../PanelSection";
+import { AgentMessage, MsgBubble } from "../MsgBubble";
 
 interface Hypothesis {
   title: string;
@@ -21,18 +21,35 @@ interface Incident {
   description: string;
 }
 
+interface FindingItemData {
+  color: "red" | "amber" | "blue" | "green";
+  text: string;
+}
+
+interface FindingsData {
+  regulatory: FindingItemData[];
+  clinical: FindingItemData[];
+  technical: FindingItemData[];
+  risk: {
+    score: number;
+    items: FindingItemData[];
+  };
+}
+
 export function OverviewTab({
   visibleMsgs,
   streaming,
   feedRef,
   hypotheses,
   incident,
+  findings,
 }: {
   visibleMsgs: AgentMessage[];
   streaming: boolean;
   feedRef: React.RefObject<HTMLDivElement>;
   hypotheses: Hypothesis[];
   incident: Incident;
+  findings?: FindingsData;
 }) {
   return (
     <div className="h-full flex flex-col md:flex-row overflow-hidden">
@@ -69,17 +86,13 @@ export function OverviewTab({
             <Detail
               label="Model"
               value={
-                <span className="font-mono text-[11px]">
-                  {incident.model}
-                </span>
+                <span className="font-mono text-[11px]">{incident.model}</span>
               }
             />
             <Detail
               label="UDI"
               value={
-                <span className="font-mono text-[11px]">
-                  {incident.udi}
-                </span>
+                <span className="font-mono text-[11px]">{incident.udi}</span>
               }
             />
           </PanelSection>
@@ -95,7 +108,7 @@ export function OverviewTab({
             </span>
             {streaming ? (
               <span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2 py-0.5 font-medium">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />{' '}
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />{" "}
                 Live
               </span>
             ) : (
@@ -138,7 +151,7 @@ export function OverviewTab({
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={`h-1.5 rounded-full ${h.confidence >= 80 ? 'bg-green-500' : h.confidence >= 50 ? 'bg-blue-500' : 'bg-slate-300'}`}
+                      className={`h-1.5 rounded-full ${h.confidence >= 80 ? "bg-green-500" : h.confidence >= 50 ? "bg-blue-500" : "bg-slate-300"}`}
                       style={{ width: `${h.confidence}%` }}
                     />
                   </div>
@@ -152,50 +165,35 @@ export function OverviewTab({
 
           {/* Regulatory */}
           <PanelSection title="Regulatory Findings">
-            <FindingItem
-              color="red"
-              text="30-day MDR required — 21 CFR 803.50(a)(1)"
-            />
-            <FindingItem
-              color="amber"
-              text="3 prior MAUDE reports — pattern established"
-            />
-            <FindingItem
-              color="blue"
-              text="EU MDR Article 87 vigilance report recommended"
-            />
+            {findings && findings.regulatory.length > 0 ? (
+              findings.regulatory.map((item, i) => (
+                <FindingItem key={i} color={item.color} text={item.text} />
+              ))
+            ) : (
+              <small>No findings in analytics</small>
+            )}
           </PanelSection>
 
           {/* Clinical */}
           <PanelSection title="Clinical Evidence">
-            <FindingItem
-              color="green"
-              text="Serious non-fatal adverse event · MedDRA 10065722"
-            />
-            <FindingItem
-              color="green"
-              text="Patient recovered without permanent injury"
-            />
-            <FindingItem
-              color="amber"
-              text="Lead impedance elevated at 1,247 Ω pre-incident"
-            />
+            {findings && findings.clinical.length > 0 ? (
+              findings.clinical.map((item, i) => (
+                <FindingItem key={i} color={item.color} text={item.text} />
+              ))
+            ) : (
+              <small>No findings in analytics</small>
+            )}
           </PanelSection>
 
           {/* Technical */}
           <PanelSection title="Technical Findings">
-            <FindingItem
-              color="amber"
-              text="CVE-CSP-2024-003 confirmed — firmware v3.4.1 race condition"
-            />
-            <FindingItem
-              color="amber"
-              text="E-04: Capacitor charged to 0% on 3 consecutive attempts"
-            />
-            <FindingItem
-              color="blue"
-              text="Patch v3.4.2 available since December 2023"
-            />
+            {findings && findings.technical.length > 0 ? (
+              findings.technical.map((item, i) => (
+                <FindingItem key={i} color={item.color} text={item.text} />
+              ))
+            ) : (
+              <small>No findings in analytics</small>
+            )}
           </PanelSection>
 
           {/* Risk */}
@@ -205,7 +203,7 @@ export function OverviewTab({
                 Overall Risk Score
               </span>
               <span className="text-lg font-bold text-red-600">
-                9.2
+                {findings?.risk?.score || 0}
                 <span className="text-xs font-normal text-muted-foreground">
                   /10
                 </span>
@@ -214,17 +212,16 @@ export function OverviewTab({
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-3">
               <div
                 className="h-2 rounded-full bg-gradient-to-r from-green-400 via-amber-400 to-red-500"
-                style={{ width: "92%" }}
+                style={{ width: `${(findings?.risk?.score || 9.2) * 10}%` }}
               />
             </div>
-            <FindingItem
-              color="red"
-              text="2,400 at-risk devices in 340 facilities"
-            />
-            <FindingItem
-              color="red"
-              text="FSCA — immediate firmware patch required"
-            />
+            {findings && findings.risk.items.length > 0 ? (
+              findings.risk.items.map((item, i) => (
+                <FindingItem key={i} color={item.color} text={item.text} />
+              ))
+            ) : (
+              <small>No findings in analytics</small>
+            )}
           </PanelSection>
         </div>
       </div>

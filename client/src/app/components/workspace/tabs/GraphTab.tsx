@@ -1,16 +1,130 @@
-import { Cpu, Scale, Stethoscope, Wrench, ShieldAlert, FileOutput } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
+import { useSelector } from 'react-redux';
+import { Cpu, Scale, Stethoscope, Wrench, ShieldAlert, FileOutput, Loader2 } from 'lucide-react';
 import { AgentCard } from '../AgentCard';
-import { AGENTS } from '../../../data/investigationData';
+import type { RootState } from '../../../store/store';
+import { API_ENDPOINTS } from '../../../../api/config';
+
+type AgentStatus = "idle" | "active" | "done" | "queued";
+
+interface AgentActivity {
+  agentType: string;
+  timestamp: string;
+}
+
+const AGENT_COLORS: Record<string, string> = {
+  Supervisor: "#6366F1",
+  Regulatory: "#0891B2",
+  Clinical: "#059669",
+  Technical: "#D97706",
+  Risk: "#DC2626",
+  Report: "#7C3AED",
+};
+
+const AGENT_ICONS: Record<string, any> = {
+  Supervisor: Cpu,
+  Regulatory: Scale,
+  Clinical: Stethoscope,
+  Technical: Wrench,
+  Risk: ShieldAlert,
+  Report: FileOutput,
+};
 
 export function GraphTab() {
+  const { id } = useParams();
+  const { token } = useSelector((state: RootState) => state.auth);
+  const [activities, setActivities] = useState<AgentActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      if (!id || !token) return;
+
+      try {
+        const response = await fetch(API_ENDPOINTS.investigationAgentLogs(id!), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setActivities(data || []);
+        }
+      } catch (error) {
+        console.error('[GRAPH] Failed to fetch logs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLogs();
+  }, [id, token]);
+
+  const getAgentStatus = (agentType: string): AgentStatus => {
+    const hasAgent = activities.some((a) => a.agentType === agentType);
+    return hasAgent ? 'done' : 'idle';
+  };
+
+  const AGENTS = [
+    {
+      name: "Supervisor",
+      icon: AGENT_ICONS.Supervisor,
+      color: AGENT_COLORS.Supervisor,
+      status: getAgentStatus("Supervisor") as AgentStatus,
+      summary: "Coordinated multi-agent investigation",
+    },
+    {
+      name: "Regulatory",
+      icon: AGENT_ICONS.Regulatory,
+      color: AGENT_COLORS.Regulatory,
+      status: getAgentStatus("Regulatory") as AgentStatus,
+      summary: "FDA compliance & MDR analysis",
+    },
+    {
+      name: "Clinical",
+      icon: AGENT_ICONS.Clinical,
+      color: AGENT_COLORS.Clinical,
+      status: getAgentStatus("Clinical") as AgentStatus,
+      summary: "Patient safety assessment",
+    },
+    {
+      name: "Technical",
+      icon: AGENT_ICONS.Technical,
+      color: AGENT_COLORS.Technical,
+      status: getAgentStatus("Technical") as AgentStatus,
+      summary: "Device failure analysis",
+    },
+    {
+      name: "Risk",
+      icon: AGENT_ICONS.Risk,
+      color: AGENT_COLORS.Risk,
+      status: getAgentStatus("Risk") as AgentStatus,
+      summary: "Risk evaluation & CAPA",
+    },
+    {
+      name: "Report",
+      icon: AGENT_ICONS.Report,
+      color: AGENT_COLORS.Report,
+      status: getAgentStatus("Report") as AgentStatus,
+      summary: "Report synthesis & export",
+    },
+  ];
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 flex items-center justify-center h-full">
+        <Loader2 className="animate-spin text-muted-foreground" size={24} />
+      </div>
+    );
+  }
+
   const nodes = [
     { id: 'start', label: 'START', x: 30, y: 185, type: 'circle' as const, r: 22, status: 'done' as const },
-    { id: 'supervisor', label: 'Supervisor', sublabel: 'Coordinator', x: 120, y: 166, w: 140, h: 44, status: 'done' as const, color: '#6366F1' },
-    { id: 'regulatory', label: 'Regulatory', sublabel: 'FDA · MDR · EU MDR', x: 340, y: 30, w: 140, h: 44, status: 'done' as const, color: '#0891B2' },
-    { id: 'clinical', label: 'Clinical', sublabel: 'AE · MedDRA · Safety', x: 340, y: 108, w: 140, h: 44, status: 'done' as const, color: '#059669' },
-    { id: 'technical', label: 'Technical', sublabel: 'Telemetry · Root Cause', x: 340, y: 186, w: 140, h: 44, status: 'done' as const, color: '#D97706' },
-    { id: 'risk', label: 'Risk', sublabel: 'CAPA · Field Safety', x: 340, y: 264, w: 140, h: 44, status: 'done' as const, color: '#DC2626' },
-    { id: 'report', label: 'Report', sublabel: 'Synthesis · Export', x: 560, y: 166, w: 140, h: 44, status: 'done' as const, color: '#7C3AED' },
+    { id: 'supervisor', label: 'Supervisor', sublabel: 'Coordinator', x: 120, y: 166, w: 140, h: 44, status: getAgentStatus('Supervisor'), color: '#6366F1' },
+    { id: 'regulatory', label: 'Regulatory', sublabel: 'FDA · MDR · EU MDR', x: 340, y: 30, w: 140, h: 44, status: getAgentStatus('Regulatory'), color: '#0891B2' },
+    { id: 'clinical', label: 'Clinical', sublabel: 'AE · MedDRA · Safety', x: 340, y: 108, w: 140, h: 44, status: getAgentStatus('Clinical'), color: '#059669' },
+    { id: 'technical', label: 'Technical', sublabel: 'Telemetry · Root Cause', x: 340, y: 186, w: 140, h: 44, status: getAgentStatus('Technical'), color: '#D97706' },
+    { id: 'risk', label: 'Risk', sublabel: 'CAPA · Field Safety', x: 340, y: 264, w: 140, h: 44, status: getAgentStatus('Risk'), color: '#DC2626' },
+    { id: 'report', label: 'Report', sublabel: 'Synthesis · Export', x: 560, y: 166, w: 140, h: 44, status: getAgentStatus('Report'), color: '#7C3AED' },
     { id: 'end', label: 'END', x: 770, y: 185, type: 'circle' as const, r: 22, status: 'done' as const },
   ];
 

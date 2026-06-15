@@ -1,5 +1,6 @@
 import prisma from '../db/client'
 import { AppError } from '../middleware/errorHandler'
+import { runInvestigationWorkflow } from './agentOrchestrator'
 
 export interface CreateIncidentInput {
   incidentNumber: string
@@ -31,7 +32,30 @@ export const createIncident = async (input: CreateIncidentInput) => {
     },
   })
 
-  return incident
+  // Create investigation immediately to get its ID
+  const investigation = await prisma.investigation.create({
+    data: {
+      incidentId: incident.id,
+      phase: 'Intake',
+    },
+  })
+
+  // Trigger investigation workflow asynchronously
+  runInvestigationWorkflow({
+    id: incident.id,
+    incidentNumber: incident.incidentNumber,
+    severity: incident.severity,
+    description: incident.description,
+    facility: incident.facility,
+    deviceName: incident.deviceName,
+    manufacturer: incident.manufacturer,
+    incidentDate: incident.incidentDate.toISOString(),
+    investigationId: investigation.id,
+  }).catch((error) => {
+    console.error('Failed to start investigation workflow:', error)
+  })
+
+  return { ...incident, investigationId: investigation.id }
 }
 
 export const getIncident = async (id: string) => {

@@ -1,13 +1,79 @@
-import { Download, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
+import { useSelector } from 'react-redux';
+import { Download, Check, Loader2 } from 'lucide-react';
+import type { RootState } from '../../../store/store';
+import { API_ENDPOINTS } from '../../../../api/config';
+
+interface ReportData {
+  incidentNumber: string;
+  deviceName: string;
+  manufacturer: string;
+  severity: string;
+  facility: string;
+  description: string;
+  recommendations: Array<{
+    id: string;
+    label: string;
+    color: 'blue' | 'red' | 'green';
+    text: string;
+    details: string;
+    context: string[];
+  }>;
+}
 
 export function ReportTab() {
+  const { id } = useParams();
+  const { token } = useSelector((state: RootState) => state.auth);
+  const [report, setReport] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReport = async () => {
+      if (!id || !token) return;
+
+      try {
+        const response = await fetch(API_ENDPOINTS.investigationReport(id!), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setReport(data);
+        }
+      } catch (error) {
+        console.error('[REPORT] Failed to fetch report:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReport();
+  }, [id, token]);
+
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 flex items-center justify-center h-full">
+        <Loader2 className="animate-spin text-muted-foreground" size={24} />
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="p-4 md:p-6 flex items-center justify-center h-full">
+        <p className="text-muted-foreground">Unable to load report</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 h-full">
       {/* Left Column - Report Content */}
       <div className="flex-1 min-w-0 space-y-5 overflow-y-auto">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">
-            Investigation Report — MDR-2024-0891
+            Investigation Report — {report.incidentNumber}
           </h3>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <button className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-background border border-border text-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors">
@@ -20,15 +86,10 @@ export function ReportTab() {
         </div>
         <ReportSection title="Executive Summary">
           <p className="text-xs text-foreground leading-relaxed">
-            A Class III implantable cardioverter-defibrillator (CardioSync Pro
-            3000, firmware v3.4.1) failed to deliver life-sustaining
-            defibrillation therapy during a documented ventricular fibrillation
-            episode on January 14, 2024 at Mayo Clinic. The patient was
-            resuscitated without permanent injury. Multi-agent AI analysis
-            identified a confirmed firmware defect (CVE-CSP-2024-003) as the
-            root cause, affecting an estimated 2,400 devices currently in the
-            field. Mandatory 30-day MDR filing and Field Safety Corrective
-            Action are recommended.
+            A {report.deviceName} by {report.manufacturer} was reported at {report.facility}.
+            Severity: {report.severity}.
+            Incident: {report.description}
+            Multi-agent AI analysis has been completed to identify root causes and provide recommendations for corrective actions and regulatory compliance.
           </p>
         </ReportSection>
         <ReportSection title="Root Cause Analysis">

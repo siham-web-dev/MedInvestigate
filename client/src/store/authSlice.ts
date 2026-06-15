@@ -38,12 +38,12 @@ export const initializeAuth = createAsyncThunk(
       const savedUser = localStorage.getItem("auth_user");
 
       if (savedToken) {
-        /*      const isValid = await authService.verifyToken();
+        const isValid = await authService.verifyToken();
         if (!isValid) {
           localStorage.removeItem("auth_token");
           localStorage.removeItem("auth_user");
           return { token: null, user: null };
-        } */
+        }
 
         if (savedUser) {
           try {

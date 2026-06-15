@@ -1,139 +1,150 @@
-export function AuditTab() {
-  const log = [
-    {
-      ts: 'Jan 18, 10:47',
-      actor: 'Dr. Sarah Chen',
-      type: 'User',
-      action: 'Submitted investigation for review',
-      icon: '👤',
-    },
-    {
-      ts: 'Jan 18, 10:23',
-      actor: 'Report Agent',
-      type: 'Agent',
-      action: 'Generated final investigation report (PDF/DOCX)',
-      icon: '🤖',
-    },
-    {
-      ts: 'Jan 18, 10:23',
-      actor: 'Supervisor Agent',
-      type: 'Agent',
-      action: 'Investigation analysis complete — root cause confirmed',
-      icon: '🤖',
-    },
-    {
-      ts: 'Jan 18, 10:21',
-      actor: 'Risk Agent',
-      type: 'Agent',
-      action: 'Tool: field_distribution_query() — 2,400 devices returned',
-      icon: '🔧',
-    },
-    {
-      ts: 'Jan 18, 10:19',
-      actor: 'Technical Agent',
-      type: 'Agent',
-      action: 'Tool: cve_lookup(firmware="3.4.1") — CVE-CSP-2024-003 matched',
-      icon: '🔧',
-    },
-    {
-      ts: 'Jan 18, 10:17',
-      actor: 'Regulatory Agent',
-      type: 'Agent',
-      action: 'Tool: maude_query(device="CardioSync Pro 3000") — 3 results',
-      icon: '🔧',
-    },
-    {
-      ts: 'Jan 18, 10:15',
-      actor: 'Supervisor Agent',
-      type: 'Agent',
-      action:
-        'Dispatched 4 parallel agents: Regulatory, Clinical, Technical, Risk',
-      icon: '🤖',
-    },
-    {
-      ts: 'Jan 17, 09:00',
-      actor: 'Dr. Sarah Chen',
-      type: 'User',
-      action: 'Assigned as primary reviewer',
-      icon: '👤',
-    },
-    {
-      ts: 'Jan 16, 14:22',
-      actor: 'Dr. Marcus Liu',
-      type: 'User',
-      action: 'Requested additional technical analysis',
-      icon: '👤',
-    },
-    {
-      ts: 'Jan 15, 10:23',
-      actor: 'System',
-      type: 'System',
-      action: 'LangGraph workflow initialized — 6 agents instantiated',
-      icon: '⚙️',
-    },
-    {
-      ts: 'Jan 15, 09:41',
-      actor: 'James Rodriguez',
-      type: 'User',
-      action: 'Incident submitted — investigation MDR-2024-0891 created',
-      icon: '👤',
-    },
-  ];
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
+import { useSelector } from 'react-redux';
+import { Loader2 } from 'lucide-react';
+import type { RootState } from '../../../store/store';
+import { API_ENDPOINTS } from '../../../../api/config';
+
+interface AuditLogEntry {
+  id: string;
+  createdAt: string;
+  action: string;
+  details?: string;
+}
+
+interface AgentActivityMessage {
+  id: string;
+  agent: string;
+  agentType: string;
+  timestamp: string;
+  message: string;
+  severity: 'alert' | 'info';
+}
+
+interface AuditTabProps {
+  agentLogs?: AgentActivityMessage[];
+}
+
+export function AuditTab({ agentLogs = [] }: AuditTabProps) {
+  const { id } = useParams();
+  const { token } = useSelector((state: RootState) => state.auth);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      if (!id || !token) return;
+
+      try {
+        const response = await fetch(API_ENDPOINTS.investigationAudit(id!), {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setLogs(data || []);
+        }
+      } catch (error) {
+        console.error('[AUDIT] Failed to fetch logs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLogs();
+  }, [id, token]);
+
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 flex items-center justify-center">
+        <Loader2 className="animate-spin text-muted-foreground" size={24} />
+      </div>
+    );
+  }
+
+  const getActionType = (action: string) => {
+    if (action.includes('created') || action.includes('submitted')) return 'System';
+    if (action.includes('updated') || action.includes('review')) return 'User';
+    return 'System';
+  };
+
+  // Combine database logs with agent activity logs
+  const combinedLogs = [
+    ...logs.map(log => ({
+      ...log,
+      type: 'database' as const,
+      createdAt: log.createdAt,
+    })),
+    ...agentLogs.map(msg => ({
+      id: msg.id,
+      createdAt: msg.timestamp,
+      action: msg.message,
+      details: msg.agentType,
+      type: 'agent' as const,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const displayLogs = combinedLogs.length > 0 ? combinedLogs : [];
 
   return (
     <div className="p-4 md:p-6">
       <h3 className="text-sm font-semibold text-foreground mb-4">Audit Log</h3>
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max">
-            <thead>
-              <tr className="border-b border-border">
-                {['Timestamp', 'Actor', 'Type', 'Action'].map((h) => (
-                  <th
-                    key={h}
-                    className="text-left px-3 md:px-4 py-2.5 text-[10px] md:text-[11px] font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {log.map((entry, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
-                >
-                  <td className="px-3 md:px-4 py-2.5 font-mono text-[10px] md:text-[11px] text-muted-foreground whitespace-nowrap">
-                    {entry.ts}
-                  </td>
-                  <td className="px-3 md:px-4 py-2.5 text-xs font-medium text-foreground whitespace-nowrap">
-                    {entry.actor}
-                  </td>
-                  <td className="px-3 md:px-4 py-2.5">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${
-                        entry.type === 'User'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : entry.type === 'Agent'
-                            ? 'bg-violet-50 text-violet-700 border-violet-200'
-                            : entry.type === 'System'
-                              ? 'bg-slate-100 text-slate-600 border-slate-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+      {displayLogs.length === 0 ? (
+        <div className="bg-card border border-border rounded-lg p-6 text-center text-muted-foreground">
+          <p className="text-sm">No audit logs available yet</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max">
+              <thead>
+                <tr className="border-b border-border">
+                  {['Timestamp', 'Action', 'Details'].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-3 md:px-4 py-2.5 text-[10px] md:text-[11px] font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayLogs.map((entry, i) => (
+                    <tr
+                      key={entry.id || i}
+                      className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${
+                        'type' in entry && entry.type === 'agent' ? 'bg-blue-50/30' : ''
                       }`}
                     >
-                      {entry.type}
-                    </span>
-                  </td>
-                  <td className="px-3 md:px-4 py-2.5 text-xs text-foreground">
-                    {entry.action}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <td className="px-3 md:px-4 py-2.5 font-mono text-[10px] md:text-[11px] text-muted-foreground whitespace-nowrap">
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-3 md:px-4 py-2.5 text-xs font-medium text-foreground">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${
+                            'type' in entry && entry.type === 'agent'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200'
+                              : getActionType(entry.action) === 'User'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {'type' in entry && entry.type === 'agent'
+                            ? `Agent: ${entry.details}`
+                            : getActionType(entry.action)}
+                        </span>
+                      </td>
+                      <td className="px-3 md:px-4 py-2.5 text-xs text-foreground max-w-xs truncate">
+                        {entry.action}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

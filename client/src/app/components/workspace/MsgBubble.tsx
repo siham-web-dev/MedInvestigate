@@ -39,7 +39,7 @@ export function MsgBubble({ msg }: { msg: AgentMessage }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <span className="font-semibold" style={{ color: msg.color }}>
-            {msg.agent} Agent
+            {msg.agent} 
           </span>
           <span className="text-muted-foreground font-mono text-[10px]">
             {msg.ts}

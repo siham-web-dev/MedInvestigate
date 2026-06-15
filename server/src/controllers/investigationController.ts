@@ -48,3 +48,30 @@ export const getAuditTrail = async (req: Request, res: Response, next: NextFunct
     next(error)
   }
 }
+
+export const getAgentActivityLogs = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const logs = await investigationService.getAgentActivityLogs(req.params.id)
+    res.json(logs)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const updateReview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const investigation = await investigationService.updateInvestigationReview(req.params.id, req.body)
+    res.json(investigation)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getInvestigationReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const report = await investigationService.getInvestigationReport(req.params.id)
+    res.json(report)
+  } catch (error) {
+    next(error)
+  }
+}
