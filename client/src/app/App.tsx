@@ -1,11 +1,15 @@
 import { RouterProvider } from 'react-router';
+import { Provider } from 'react-redux';
+import { store } from '../store/store';
 import { router } from './routes';
-import { AuthProvider } from '../context/AuthContext';
+import AppInitializer from './AppInitializer';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>
+    <Provider store={store}>
+      <AppInitializer>
+        <RouterProvider router={router} />
+      </AppInitializer>
+    </Provider>
   );
 }

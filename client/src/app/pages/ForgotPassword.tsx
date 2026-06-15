@@ -1,17 +1,22 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { FlaskConical, ArrowLeft, ArrowRight, Mail, Check } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import {
+  forgotPassword as forgotPasswordThunk,
+  verifyResetCode as verifyResetCodeThunk,
+  resetPassword as resetPasswordThunk,
+} from '../../store/authSlice';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
-  const { forgotPassword, verifyResetCode, resetPassword } = useAuth();
+  const dispatch = useAppDispatch();
+  const { loading: isLoading } = useAppSelector((state) => state.auth);
   const [step, setStep] = useState<'email' | 'verify' | 'reset'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -24,17 +29,17 @@ export default function ForgotPassword() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      await forgotPassword(email);
-      setStep('verify');
-      setSuccess('Reset code sent to your email');
+      const result = await dispatch(forgotPasswordThunk(email));
+      if (forgotPasswordThunk.fulfilled.match(result)) {
+        setStep('verify');
+        setSuccess('Reset code sent to your email');
+      } else if (forgotPasswordThunk.rejected.match(result)) {
+        setError(result.payload as string);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send reset code';
       setError(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -47,17 +52,17 @@ export default function ForgotPassword() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      await verifyResetCode(email, code);
-      setStep('reset');
-      setSuccess('');
+      const result = await dispatch(verifyResetCodeThunk({ email, code }));
+      if (verifyResetCodeThunk.fulfilled.match(result)) {
+        setStep('reset');
+        setSuccess('');
+      } else if (verifyResetCodeThunk.rejected.match(result)) {
+        setError(result.payload as string);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid verification code';
       setError(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -81,17 +86,17 @@ export default function ForgotPassword() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      await resetPassword(email, code, password);
-      setSuccess('Password reset successfully! Redirecting to login...');
-      setTimeout(() => navigate('/login'), 1500);
+      const result = await dispatch(resetPasswordThunk({ email, code, newPassword: password }));
+      if (resetPasswordThunk.fulfilled.match(result)) {
+        setSuccess('Password reset successfully! Redirecting to login...');
+        setTimeout(() => navigate('/login'), 1500);
+      } else if (resetPasswordThunk.rejected.match(result)) {
+        setError(result.payload as string);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to reset password';
       setError(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 

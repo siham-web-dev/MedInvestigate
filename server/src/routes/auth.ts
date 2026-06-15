@@ -5,6 +5,8 @@ import {
   forgotPassword,
   verifyResetCode,
   resetPassword,
+  refresh,
+  verify,
 } from '../controllers/authController'
 
 const router: Router = express.Router()
@@ -14,5 +16,7 @@ router.post('/login', login)
 router.post('/forgot-password', forgotPassword)
 router.post('/verify-reset-code', verifyResetCode)
 router.post('/reset-password', resetPassword)
+router.post('/refresh', refresh)
+router.get('/verify', verify)
 
 export default router

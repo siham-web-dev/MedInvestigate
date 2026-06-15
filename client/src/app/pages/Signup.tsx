@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { FlaskConical, Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { register as registerThunk } from '../../store/authSlice';
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const dispatch = useAppDispatch();
+  const { loading: isLoading } = useAppSelector((state) => state.auth);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -15,7 +17,6 @@ export default function Signup() {
     organization: '',
     agreeTerms: false,
   });
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -62,21 +63,23 @@ export default function Signup() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      await register({
+      const result = await dispatch(registerThunk({
         email: formData.email,
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
         organization: formData.organization,
-      });
-      navigate('/dashboard');
+      }));
+
+      if (registerThunk.fulfilled.match(result)) {
+        navigate('/dashboard');
+      } else if (registerThunk.rejected.match(result)) {
+        setError(result.payload as string);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
       setError(errorMessage);
-      setIsLoading(false);
     }
   };
 

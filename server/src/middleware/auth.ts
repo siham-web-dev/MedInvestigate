@@ -17,7 +17,15 @@ export const generateToken = async (userId: string): Promise<string> => {
   return await new jose.SignJWT({ userId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime('24h')
+    .sign(secret)
+}
+
+export const generateRefreshToken = async (userId: string): Promise<string> => {
+  return await new jose.SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('30d')
     .sign(secret)
 }
 

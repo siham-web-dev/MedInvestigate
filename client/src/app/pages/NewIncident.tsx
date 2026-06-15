@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Save, Send } from "lucide-react";
+import { Save, Send, AlertCircle } from "lucide-react";
+import { useAppSelector } from "../../../src/store/hooks";
+import { incidentService } from "../../../src/services/incidentService";
 import { FormSection, FormField } from "../components/incidents/FormSection";
 import { FileUploadArea } from "../components/incidents/FileUploadArea";
 import { AiClassificationPanel } from "../components/incidents/AiClassificationPanel";
@@ -38,10 +40,13 @@ interface DroppedFile {
 
 export default function NewIncident() {
   const navigate = useNavigate();
+  const { user } = useAppSelector((state) => state.auth);
   const [files, setFiles] = useState<DroppedFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [aiClassified, setAiClassified] = useState(false);
   const [classifying, setClassifying] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     deviceName: "",
     udi: "",
@@ -71,8 +76,70 @@ export default function NewIncident() {
     }, 2200);
   };
 
-  const handleSubmit = () => {
-    navigate("/investigations/MDR-2024-0892");
+  const validateForm = (): boolean => {
+    if (!form.deviceName) {
+      setError("Device name is required");
+      return false;
+    }
+    if (!form.manufacturer) {
+      setError("Manufacturer is required");
+      return false;
+    }
+    if (!form.facility) {
+      setError("Facility is required");
+      return false;
+    }
+    if (!form.incidentDate) {
+      setError("Incident date is required");
+      return false;
+    }
+    if (!form.severity) {
+      setError("Severity is required");
+      return false;
+    }
+    if (!form.failureDescription) {
+      setError("Description is required");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Generate incident number (YYYY-MM-DDNNN format)
+      const now = new Date();
+      const date = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const random = Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, "0");
+      const incidentNumber = `MDR-${date.slice(0, 4)}-${date.slice(4)}${random}`;
+
+      const incident = await incidentService.createIncident({
+        incidentNumber,
+        severity: form.severity as "Critical" | "High" | "Medium" | "Low",
+        description: form.failureDescription,
+        incidentDate: form.incidentDate,
+        facility: form.facility,
+        reportedBy: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+        deviceName: form.deviceName,
+        manufacturer: form.manufacturer,
+      });
+
+      // Navigate to the investigations page with the new incident
+      navigate(`/investigations/${incident.id}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create incident";
+      setError(message);
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -85,6 +152,15 @@ export default function NewIncident() {
           Submit a medical device incident for AI-assisted investigation
         </p>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex gap-3">
+          <AlertCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-900">{error}</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-5">
         {/* Main form */}
@@ -231,22 +307,37 @@ export default function NewIncident() {
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
               onClick={() => navigate("/investigations")}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted transition-colors"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
-            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted transition-colors">
+            <button
+              disabled={isSubmitting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Save size={14} />
               <span className="hidden sm:inline">Save Draft</span>
               <span className="sm:hidden">Draft</span>
             </button>
             <button
               onClick={handleSubmit}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-blue-700 transition-colors"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send size={14} />
-              <span className="hidden sm:inline">Submit Investigation</span>
-              <span className="sm:hidden">Submit</span>
+              {isSubmitting ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="hidden sm:inline">Submitting...</span>
+                  <span className="sm:hidden">Submitting...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={14} />
+                  <span className="hidden sm:inline">Submit Investigation</span>
+                  <span className="sm:hidden">Submit</span>
+                </>
+              )}
             </button>
           </div>
         </div>

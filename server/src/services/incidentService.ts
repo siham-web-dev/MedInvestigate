@@ -2,18 +2,32 @@ import prisma from '../db/client'
 import { AppError } from '../middleware/errorHandler'
 
 export interface CreateIncidentInput {
-  deviceId: string
+  incidentNumber: string
   severity: 'Critical' | 'High' | 'Medium' | 'Low'
   description: string
+  incidentDate: Date
+  facility: string
+  reportedBy: string
+  deviceName: string
+  manufacturer: string
 }
 
 export const createIncident = async (input: CreateIncidentInput) => {
+  const incidentDate = typeof input.incidentDate === 'string'
+    ? new Date(input.incidentDate)
+    : input.incidentDate
+
   const incident = await prisma.incident.create({
     data: {
-      deviceId: input.deviceId,
+      incidentNumber: input.incidentNumber,
       severity: input.severity,
       status: 'Open',
       description: input.description,
+      incidentDate,
+      facility: input.facility,
+      reportedBy: input.reportedBy,
+      deviceName: input.deviceName,
+      manufacturer: input.manufacturer,
     },
   })
 

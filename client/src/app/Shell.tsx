@@ -5,7 +5,8 @@ import {
   FlaskConical, ChevronDown, Menu, X, LogOut,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { logout } from '../store/authSlice';
 
 const NAV = [
   {
@@ -34,7 +35,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user } = useAppSelector((state) => state.auth);
 
   const initials = user
     ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
@@ -112,7 +113,8 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 function TopBar({ onMenuToggle, isSmallScreen }: { onMenuToggle: () => void; isSmallScreen: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const dispatch = useAppDispatch();
+  const { user } = useAppSelector((state) => state.auth);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -131,7 +133,7 @@ function TopBar({ onMenuToggle, isSmallScreen }: { onMenuToggle: () => void; isS
 
   const handleLogout = () => {
     setUserMenuOpen(false);
-    logout();
+    dispatch(logout());
     navigate('/login');
   };
 

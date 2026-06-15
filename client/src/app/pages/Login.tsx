@@ -1,35 +1,37 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { FlaskConical, Eye, EyeOff, ArrowRight } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { login as loginThunk } from "../../store/authSlice";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const dispatch = useAppDispatch();
+  const { loading: isLoading, error: authError } = useAppSelector((state) => state.auth);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
+
+    if (!email || !password) {
+      setError("Please enter your email and password");
+      return;
+    }
 
     try {
-      if (!email || !password) {
-        setError("Please enter your email and password");
-        setIsLoading(false);
-        return;
+      const result = await dispatch(loginThunk({ email, password }));
+      if (loginThunk.fulfilled.match(result)) {
+        navigate("/dashboard");
+      } else if (loginThunk.rejected.match(result)) {
+        setError(result.payload as string);
       }
-
-      await login(email, password);
-      navigate("/dashboard");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Login failed. Please try again.";
       setError(errorMessage);
-      setIsLoading(false);
     }
   };
 

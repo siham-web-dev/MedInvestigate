@@ -16,26 +16,39 @@ model User {
   password              String     // bcrypt hashed
   passwordResetToken    String?
   passwordResetExpires  DateTime?
+  refreshToken          String?    // JWT refresh token
+  refreshTokenExpires   DateTime?
 
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 }
 
 model Incident {
-  id          String   @id @default(cuid())
-  deviceId    String
-  severity    String   // Critical | High | Medium | Low
-  status      String   // Open | InProgress | Resolved | Closed
-  description String
+  id                    String   @id @default(cuid())
+  incidentNumber        String   @unique // MDR-2024-0874 format
+  severity              String   // Critical | High | Medium | Low
+  status                String   // Open | InProgress | Resolved | Closed | InReview
+  description           String
+  incidentDate          DateTime
+  facility              String
+  reportedBy            String
+  deviceName            String
+  manufacturer          String
 
-  attachments String?  // JSON array of file URLs or references
-  reportedAt  DateTime @default(now())
+  attachments           String?  // JSON array of file URLs or references
+  reportedAt            DateTime @default(now())
 
-  investigation Investigation?
-  auditLogs   AuditLog[]
+  investigation         Investigation?
+  deviceInfo            DeviceInformation?
+  rootCauseHypotheses   RootCauseHypothesis[]
+  regulatoryFindings    RegulatoryFinding[]
+  clinicalEvidence      ClinicalEvidence[]
+  technicalFindings     TechnicalFinding[]
+  agentActivities       AgentActivity[]
+  auditLogs             AuditLog[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Investigation {
@@ -70,6 +83,96 @@ model AgentTask {
 
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+}
+
+model DeviceInformation {
+  id              String   @id @default(cuid())
+  incidentId      String   @unique
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  deviceName      String
+  manufacturer    String
+  model           String
+  udi             String   @unique
+  serialNumber    String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RootCauseHypothesis {
+  id              String   @id @default(cuid())
+  incidentId      String
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  confidenceScore Int      // 0-100 percentage
+  status          String   // Confirmed | Supporting | Excluded
+  progressValue   Int?     // for progress bar
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RegulatoryFinding {
+  id              String   @id @default(cuid())
+  incidentId      String
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  title           String
+  regulationCode  String?
+  description     String?
+  severity        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ClinicalEvidence {
+  id              String   @id @default(cuid())
+  incidentId      String
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String
+  meddrId         String?
+  evidenceType    String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TechnicalFinding {
+  id              String   @id @default(cuid())
+  incidentId      String
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  cveId           String?
+  title           String
+  description     String
+  affectedVersion String?
+  patchAvailable  String?
+  patchDate       DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AgentActivity {
+  id              String   @id @default(cuid())
+  incidentId      String
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  agentType       String   // Regulatory | Technical | Risk | Supervisor | Report
+  agentName       String
+  timestamp       DateTime
+  status          String   // Result | Alert | Info | Complete
+  message         String
+  resultData      String?  // JSON result data
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model AuditLog {

@@ -1,3 +1,5 @@
+import apiClient from '../api/apiClient';
+
 // API response types
 export interface AuthResponse {
   success: boolean;
@@ -10,6 +12,7 @@ export interface AuthResponse {
     organization: string;
   };
   token?: string;
+  refreshToken?: string;
 }
 
 export interface RegisterPayload {
@@ -40,136 +43,96 @@ export interface ResetPasswordPayload {
   newPassword: string;
 }
 
-// Base API URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-// Helper function to make authenticated requests
-async function apiCall<T>(
-  endpoint: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-  body?: unknown,
-  includeToken: boolean = false
-): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  // Add authorization header if token is available and needed
-  if (includeToken) {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
-
-  const options: RequestInit = {
-    method,
-    headers,
-  };
-
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-
-  try {
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `API request failed with status ${response.status}`);
-    }
-
-    // Some endpoints might return no content
-    if (response.status === 204) {
-      return {} as T;
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(error.message);
-    }
-    throw new Error('An unexpected error occurred');
-  }
-}
-
 // Auth Service
 export const authService = {
   /**
    * Register a new user account
    */
   async register(payload: RegisterPayload): Promise<AuthResponse> {
-    const response = await apiCall<AuthResponse>(
-      '/api/auth/register',
-      'POST',
-      payload
-    );
+    const response = await apiClient.post<AuthResponse>('/api/auth/register', payload);
 
-    // Store token if provided
-    if (response.token) {
-      localStorage.setItem('auth_token', response.token);
+    // Store tokens if provided
+    if (response.data.token) {
+      localStorage.setItem('auth_token', response.data.token);
+    }
+    if (response.data.refreshToken) {
+      localStorage.setItem('refresh_token', response.data.refreshToken);
     }
 
-    return response;
+    return response.data;
   },
 
   /**
    * Login with email and password
    */
   async login(payload: LoginPayload): Promise<AuthResponse> {
-    const response = await apiCall<AuthResponse>(
-      '/api/auth/login',
-      'POST',
-      payload
-    );
+    const response = await apiClient.post<AuthResponse>('/api/auth/login', payload);
 
-    // Store token if provided
-    if (response.token) {
-      localStorage.setItem('auth_token', response.token);
+    // Store tokens if provided
+    if (response.data.token) {
+      localStorage.setItem('auth_token', response.data.token);
+    }
+    if (response.data.refreshToken) {
+      localStorage.setItem('refresh_token', response.data.refreshToken);
     }
 
-    return response;
+    return response.data;
   },
 
   /**
    * Request password reset
    */
   async forgotPassword(payload: ForgotPasswordPayload): Promise<AuthResponse> {
-    return apiCall<AuthResponse>(
-      '/api/auth/forgot-password',
-      'POST',
-      payload
-    );
+    const response = await apiClient.post<AuthResponse>('/api/auth/forgot-password', payload);
+    return response.data;
   },
 
   /**
    * Verify reset code
    */
   async verifyResetCode(payload: VerifyResetCodePayload): Promise<AuthResponse> {
-    return apiCall<AuthResponse>(
-      '/api/auth/verify-reset-code',
-      'POST',
-      payload
-    );
+    const response = await apiClient.post<AuthResponse>('/api/auth/verify-reset-code', payload);
+    return response.data;
   },
 
   /**
    * Reset password with verified code
    */
   async resetPassword(payload: ResetPasswordPayload): Promise<AuthResponse> {
-    return apiCall<AuthResponse>(
-      '/api/auth/reset-password',
-      'POST',
-      payload
-    );
+    const response = await apiClient.post<AuthResponse>('/api/auth/reset-password', payload);
+    return response.data;
   },
 
   /**
-   * Logout by clearing the stored token
+   * Refresh access token using refresh token
+   */
+  async refreshToken(): Promise<AuthResponse> {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await apiClient.post<AuthResponse>('/api/auth/refresh', {
+      refreshToken,
+    });
+
+    // Store new tokens
+    if (response.data.token) {
+      localStorage.setItem('auth_token', response.data.token);
+    }
+    if (response.data.refreshToken) {
+      localStorage.setItem('refresh_token', response.data.refreshToken);
+    }
+
+    return response.data;
+  },
+
+  /**
+   * Logout by clearing the stored tokens
    */
   logout(): void {
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
   },
 
   /**
@@ -177,6 +140,13 @@ export const authService = {
    */
   getToken(): string | null {
     return localStorage.getItem('auth_token');
+  },
+
+  /**
+   * Get stored refresh token
+   */
+  getRefreshToken(): string | null {
+    return localStorage.getItem('refresh_token');
   },
 
   /**
@@ -188,7 +158,6 @@ export const authService = {
 
   /**
    * Verify token validity by making an authenticated request
-   * This can be called on app load to verify the stored token is still valid
    */
   async verifyToken(): Promise<boolean> {
     try {
@@ -197,20 +166,8 @@ export const authService = {
         return false;
       }
 
-      // Make a test request to verify token
-      const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        this.logout();
-        return false;
-      }
-
-      return true;
+      const response = await apiClient.get('/api/auth/verify');
+      return response.status === 200;
     } catch {
       return false;
     }
