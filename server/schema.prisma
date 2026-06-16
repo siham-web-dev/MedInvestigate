@@ -63,6 +63,7 @@ model Investigation {
   notes         String?
 
   agentTasks    AgentTask[]
+  reviewComments ReviewComment[]
   auditLogs     AuditLog[]
 
   createdAt     DateTime @default(now())
@@ -80,6 +81,19 @@ model AgentTask {
 
   startedAt       DateTime?
   completedAt     DateTime?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model ReviewComment {
+  id              String      @id @default(cuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  reviewer        String      // Reviewer name or ID
+  comment         String      // Review comment text
+  reviewStatus    String?     // approved | more-analysis | pending
 
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt

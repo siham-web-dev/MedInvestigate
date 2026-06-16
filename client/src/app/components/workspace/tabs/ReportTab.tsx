@@ -1,9 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router';
 import { useSelector } from 'react-redux';
 import { Download, Check, Loader2 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 import type { RootState } from '../../../store/store';
 import { API_ENDPOINTS } from '../../../../api/config';
+
+interface RootCause {
+  id: string;
+  title: string;
+  description?: string;
+  confidenceScore: number;
+  status: string;
+}
+
+interface RegulatoryFinding {
+  id: string;
+  title: string;
+  regulationCode?: string;
+  description?: string;
+  severity?: string;
+}
+
+interface TechnicalFinding {
+  id: string;
+  title: string;
+  description: string;
+  affectedVersion?: string;
+  patchAvailable?: string;
+  patchDate?: string;
+  cveId?: string;
+}
 
 interface ReportData {
   incidentNumber: string;
@@ -20,6 +50,9 @@ interface ReportData {
     details: string;
     context: string[];
   }>;
+  rootCauses: RootCause[];
+  regulatoryFindings: RegulatoryFinding[];
+  technicalFindings: TechnicalFinding[];
 }
 
 export function ReportTab() {
@@ -27,6 +60,8 @@ export function ReportTab() {
   const { token } = useSelector((state: RootState) => state.auth);
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const reportContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -51,6 +86,179 @@ export function ReportTab() {
     fetchReport();
   }, [id, token]);
 
+  const exportToPDF = async () => {
+    if (!reportContentRef.current) return;
+
+    try {
+      setExporting(true);
+      const canvas = await html2canvas(reportContentRef.current, {
+        scale: 2,
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= 297;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= 297;
+      }
+
+      pdf.save(`${report?.incidentNumber || 'Investigation'}_Report.pdf`);
+    } catch (error) {
+      console.error('[REPORT] Failed to export PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportToDOCX = async () => {
+    if (!report) return;
+
+    try {
+      setExporting(true);
+      const sections = [
+        new Paragraph({
+          text: `Investigation Report — ${report.incidentNumber}`,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          text: `Device: ${report.deviceName} by ${report.manufacturer}`,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: `Facility: ${report.facility}`,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: `Severity: ${report.severity}`,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          text: 'Executive Summary',
+          heading: HeadingLevel.HEADING_2,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: `A ${report.deviceName} by ${report.manufacturer} was reported at ${report.facility}. Severity: ${report.severity}. Incident: ${report.description} Multi-agent AI analysis has been completed to identify root causes and provide recommendations for corrective actions and regulatory compliance.`,
+          spacing: { after: 400 },
+        }),
+      ];
+
+      if (report.rootCauses.length > 0) {
+        sections.push(
+          new Paragraph({
+            text: 'Root Cause Analysis',
+            heading: HeadingLevel.HEADING_2,
+            spacing: { after: 200 },
+          })
+        );
+        report.rootCauses.forEach((cause) => {
+          sections.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: `${cause.title} (${cause.confidenceScore}% confidence, ${cause.status})`, bold: true }),
+              ],
+              spacing: { after: 100 },
+            })
+          );
+          if (cause.description) {
+            sections.push(
+              new Paragraph({
+                text: cause.description,
+                spacing: { after: 200 },
+              })
+            );
+          }
+        });
+      }
+
+      if (report.regulatoryFindings.length > 0) {
+        sections.push(
+          new Paragraph({
+            text: 'Regulatory Findings',
+            heading: HeadingLevel.HEADING_2,
+            spacing: { after: 200 },
+          })
+        );
+        report.regulatoryFindings.forEach((finding) => {
+          sections.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: `${finding.title}${finding.regulationCode ? ` (${finding.regulationCode})` : ''}`, bold: true }),
+              ],
+              spacing: { after: 100 },
+            })
+          );
+          if (finding.description) {
+            sections.push(
+              new Paragraph({
+                text: finding.description,
+                spacing: { after: 200 },
+              })
+            );
+          }
+        });
+      }
+
+      if (report.technicalFindings.length > 0) {
+        sections.push(
+          new Paragraph({
+            text: 'Technical Findings',
+            heading: HeadingLevel.HEADING_2,
+            spacing: { after: 200 },
+          })
+        );
+        report.technicalFindings.forEach((finding) => {
+          sections.push(
+            new Paragraph({
+              children: [new TextRun({ text: finding.title, bold: true })],
+              spacing: { after: 100 },
+            })
+          );
+          if (finding.description) {
+            sections.push(
+              new Paragraph({
+                text: finding.description,
+                spacing: { after: 100 },
+              })
+            );
+          }
+          if (finding.affectedVersion || finding.patchAvailable) {
+            sections.push(
+              new Paragraph({
+                text: `${finding.affectedVersion ? `Affected: ${finding.affectedVersion}` : ''} ${finding.patchAvailable ? `Patch: ${finding.patchAvailable}` : ''}`,
+                spacing: { after: 200 },
+              })
+            );
+          }
+        });
+      }
+
+      const doc = new Document({
+        sections: [{ children: sections }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${report.incidentNumber}_Report.docx`);
+    } catch (error) {
+      console.error('[REPORT] Failed to export DOCX:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-4 md:p-6 flex items-center justify-center h-full">
@@ -70,17 +278,25 @@ export function ReportTab() {
   return (
     <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6 h-full">
       {/* Left Column - Report Content */}
-      <div className="flex-1 min-w-0 space-y-5 overflow-y-auto">
+      <div className="flex-1 min-w-0 space-y-5 overflow-y-auto" ref={reportContentRef}>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">
             Investigation Report — {report.incidentNumber}
           </h3>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <button className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-background border border-border text-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors">
-              <Download size={13} /> Export PDF
+            <button
+              onClick={exportToPDF}
+              disabled={exporting}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-background border border-border text-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download size={13} /> {exporting ? 'Exporting...' : 'Export PDF'}
             </button>
-            <button className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-background border border-border text-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors">
-              <Download size={13} /> Export DOCX
+            <button
+              onClick={exportToDOCX}
+              disabled={exporting}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-background border border-border text-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download size={13} /> {exporting ? 'Exporting...' : 'Export DOCX'}
             </button>
           </div>
         </div>
@@ -94,84 +310,101 @@ export function ReportTab() {
         </ReportSection>
         <ReportSection title="Root Cause Analysis">
           <div className="space-y-2 text-xs">
-            <p>
-              <strong>Primary root cause:</strong> Race condition in the therapy
-              delivery scheduler (firmware v3.4.1) causes premature charge abort
-              when lead impedance exceeds 1,100 Ω. Error code E-04 indicates
-              capacitor charging failure — device did not reach required 360J
-              discharge threshold.
-            </p>
-            <p>
-              <strong>Contributing factor:</strong> Patient lead impedance had
-              increased to 1,247 Ω prior to incident — within acceptable range
-              per device labeling but above the undocumented firmware threshold.
-            </p>
-            <p>
-              <strong>Patch status:</strong> Firmware v3.4.2 available since
-              December 2023. Not deployed to this unit.
-            </p>
+            {report.rootCauses.length > 0 ? (
+              report.rootCauses.map((cause) => (
+                <div key={cause.id} className="pb-2 border-b border-border last:border-b-0 last:pb-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <strong>{cause.title}</strong>
+                    <span className="text-[10px] px-2 py-0.5 bg-muted rounded-full">
+                      {cause.confidenceScore}% confidence
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                      {cause.status}
+                    </span>
+                  </div>
+                  {cause.description && <p className="text-foreground">{cause.description}</p>}
+                </div>
+              ))
+            ) : (
+              <p className="text-muted-foreground">No root cause analysis available yet</p>
+            )}
           </div>
         </ReportSection>
         <ReportSection title="Regulatory Findings">
-          <ul className="text-xs space-y-1.5 text-foreground">
-            <li className="flex gap-2">
-              <span className="text-red-500 mt-0.5">•</span>30-day MDR required
-              under 21 CFR 803.50(a)(1) — serious injury from device
-              malfunction. Deadline: February 14, 2024.
-            </li>
-            <li className="flex gap-2">
-              <span className="text-amber-500 mt-0.5">•</span>EU MDR Article 87
-              vigilance report recommended for European market devices.
-            </li>
-            <li className="flex gap-2">
-              <span className="text-blue-500 mt-0.5">•</span>3 prior similar
-              MAUDE reports establish pattern — potential Class II recall
-              consideration.
-            </li>
-          </ul>
+          {report.regulatoryFindings.length > 0 ? (
+            <ul className="text-xs space-y-1.5 text-foreground">
+              {report.regulatoryFindings.map((finding) => {
+                const severityColor =
+                  finding.severity === 'critical'
+                    ? 'text-red-500'
+                    : finding.severity === 'high'
+                      ? 'text-amber-500'
+                      : 'text-blue-500';
+                return (
+                  <li key={finding.id} className="flex gap-2">
+                    <span className={`${severityColor} mt-0.5`}>•</span>
+                    <div className="flex-1">
+                      <strong>{finding.title}</strong>
+                      {finding.regulationCode && (
+                        <div className="text-[10px] text-muted-foreground">
+                          Code: {finding.regulationCode}
+                        </div>
+                      )}
+                      {finding.description && <p>{finding.description}</p>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground">No regulatory findings identified yet</p>
+          )}
         </ReportSection>
         <ReportSection title="Risk Assessment">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-center">
-              <div className="text-2xl font-bold text-red-700">9.2</div>
-              <div className="text-red-600 text-[11px] mt-1">
-                Risk Score / 10
-              </div>
+          {report.recommendations.length > 0 ? (
+            <div className="space-y-3 text-xs">
+              {report.recommendations.map((rec) => {
+                const colorMap = {
+                  blue: 'bg-blue-500',
+                  red: 'bg-red-500',
+                  green: 'bg-green-500',
+                };
+                return (
+                  <div key={rec.id} className="pb-3 border-b border-border last:border-b-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`inline-block w-2 h-2 rounded-full ${colorMap[rec.color]}`}></span>
+                      <strong>{rec.label}</strong>
+                    </div>
+                    <p className="text-foreground">{rec.text}</p>
+                  </div>
+                );
+              })}
             </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-md p-3 text-center">
-              <div className="text-2xl font-bold text-orange-700">2,400</div>
-              <div className="text-orange-600 text-[11px] mt-1">
-                At-Risk Devices
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-center">
-              <div className="text-2xl font-bold text-amber-700">34%</div>
-              <div className="text-amber-600 text-[11px] mt-1">
-                Harm Probability / yr
-              </div>
-            </div>
-          </div>
+          ) : (
+            <p className="text-muted-foreground">Risk assessment in progress...</p>
+          )}
         </ReportSection>
-        <ReportSection title="CAPA Recommendations">
-          <ol className="text-xs space-y-2 text-foreground list-decimal list-inside">
-            <li>
-              Deploy firmware v3.4.2 patch to all 2,400 affected units within 30
-              days via remote update protocol.
-            </li>
-            <li>
-              Issue urgent field safety notice to all implanting centers and
-              device follow-up clinics.
-            </li>
-            <li>
-              Implement enhanced lead impedance monitoring threshold alert at
-              1,000 Ω in next firmware release.
-            </li>
-            <li>
-              Conduct post-market surveillance review of all E-04 events across
-              entire CSP-3000 installed base.
-            </li>
-            <li>File 30-day MDR with FDA by February 14, 2024.</li>
-          </ol>
+        <ReportSection title="Technical Findings & CAPA Recommendations">
+          {report.technicalFindings.length > 0 ? (
+            <div className="space-y-3 text-xs">
+              {report.technicalFindings.map((finding) => (
+                <div key={finding.id} className="pb-3 border-b border-border last:border-b-0">
+                  <strong>{finding.title}</strong>
+                  {finding.description && (
+                    <p className="text-foreground mt-1">{finding.description}</p>
+                  )}
+                  <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                    {finding.affectedVersion && <div>Affected Version: {finding.affectedVersion}</div>}
+                    {finding.patchAvailable && <div>Patch Available: {finding.patchAvailable}</div>}
+                    {finding.patchDate && <div>Patch Date: {finding.patchDate}</div>}
+                    {finding.cveId && <div>CVE: {finding.cveId}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No technical findings available yet</p>
+          )}
         </ReportSection>
       </div>
 
@@ -191,7 +424,7 @@ export function ReportTab() {
               {/* Document Header */}
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 text-center border-b-4 border-blue-800">
                 <div className="text-[10px] font-semibold opacity-90">CONFIDENTIAL</div>
-                <div className="text-xs font-bold mt-1">MDR-2024-0891</div>
+                <div className="text-xs font-bold mt-1">{report.incidentNumber}</div>
               </div>
 
               {/* Document Content Mockup */}

@@ -3,14 +3,19 @@ import { useParams } from 'react-router';
 import { useSelector } from 'react-redux';
 import { Cpu, Scale, Stethoscope, Wrench, ShieldAlert, FileOutput, Loader2 } from 'lucide-react';
 import { AgentCard } from '../AgentCard';
-import type { RootState } from '../../../store/store';
+import type { RootState } from '../../../../store/store';
 import { API_ENDPOINTS } from '../../../../api/config';
 
 type AgentStatus = "idle" | "active" | "done" | "queued";
 
 interface AgentActivity {
+  id?: string;
   agentType: string;
+  agentName?: string;
   timestamp: string;
+  status?: string;
+  message?: string;
+  severity?: string;
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -31,13 +36,31 @@ const AGENT_ICONS: Record<string, any> = {
   Report: FileOutput,
 };
 
-export function GraphTab() {
+interface GraphTabProps {
+  activities?: AgentActivity[];
+  streaming?: boolean;
+}
+
+export function GraphTab({ activities = [], streaming = false }: GraphTabProps) {
   const { id } = useParams();
   const { token } = useSelector((state: RootState) => state.auth);
-  const [activities, setActivities] = useState<AgentActivity[]>([]);
+  const [localActivities, setLocalActivities] = useState<AgentActivity[]>(activities);
   const [loading, setLoading] = useState(true);
 
+  // Update local activities when passed activities change
   useEffect(() => {
+    if (activities && activities.length > 0) {
+      setLocalActivities(activities);
+      setLoading(false);
+    }
+  }, [activities]);
+
+  // Fetch initial logs only on mount if no activities provided
+  useEffect(() => {
+    if (activities && activities.length > 0) {
+      return;
+    }
+
     const fetchLogs = async () => {
       if (!id || !token) return;
 
@@ -48,7 +71,7 @@ export function GraphTab() {
 
         if (response.ok) {
           const data = await response.json();
-          setActivities(data || []);
+          setLocalActivities(data || []);
         }
       } catch (error) {
         console.error('[GRAPH] Failed to fetch logs:', error);
@@ -61,8 +84,18 @@ export function GraphTab() {
   }, [id, token]);
 
   const getAgentStatus = (agentType: string): AgentStatus => {
-    const hasAgent = activities.some((a) => a.agentType === agentType);
-    return hasAgent ? 'done' : 'idle';
+    const lastActivity = localActivities.filter((a) => a.agentType === agentType).pop();
+    if (!lastActivity) return 'idle';
+    // If streaming is true and this agent was recently active, mark as active
+    if (streaming && lastActivity) {
+      const activityTime = new Date(lastActivity.timestamp).getTime();
+      const now = Date.now();
+      const recentThreshold = 5000; // 5 seconds
+      if (now - activityTime < recentThreshold) {
+        return 'active';
+      }
+    }
+    return 'done';
   };
 
   const AGENTS = [
@@ -117,15 +150,39 @@ export function GraphTab() {
     );
   }
 
+  const getStatusIndicatorColor = (status: AgentStatus): string => {
+    switch (status) {
+      case 'active':
+        return '#3B82F6'; // Blue for active
+      case 'done':
+        return '#22C55E'; // Green for done
+      case 'queued':
+        return '#CBD5E1'; // Gray for queued
+      default:
+        return '#94A3B8'; // Slate for idle
+    }
+  };
+
+  const supervisorStatus = getAgentStatus('Supervisor');
+  const regulatoryStatus = getAgentStatus('Regulatory');
+  const clinicalStatus = getAgentStatus('Clinical');
+  const technicalStatus = getAgentStatus('Technical');
+  const riskStatus = getAgentStatus('Risk');
+  const reportStatus = getAgentStatus('Report');
+
+  // END node is only done when all agents are done
+  const allAgentsDone = [supervisorStatus, regulatoryStatus, clinicalStatus, technicalStatus, riskStatus, reportStatus].every(status => status === 'done');
+  const endNodeStatus: AgentStatus = allAgentsDone ? 'done' : streaming ? 'active' : 'idle';
+
   const nodes = [
     { id: 'start', label: 'START', x: 30, y: 185, type: 'circle' as const, r: 22, status: 'done' as const },
-    { id: 'supervisor', label: 'Supervisor', sublabel: 'Coordinator', x: 120, y: 166, w: 140, h: 44, status: getAgentStatus('Supervisor'), color: '#6366F1' },
-    { id: 'regulatory', label: 'Regulatory', sublabel: 'FDA · MDR · EU MDR', x: 340, y: 30, w: 140, h: 44, status: getAgentStatus('Regulatory'), color: '#0891B2' },
-    { id: 'clinical', label: 'Clinical', sublabel: 'AE · MedDRA · Safety', x: 340, y: 108, w: 140, h: 44, status: getAgentStatus('Clinical'), color: '#059669' },
-    { id: 'technical', label: 'Technical', sublabel: 'Telemetry · Root Cause', x: 340, y: 186, w: 140, h: 44, status: getAgentStatus('Technical'), color: '#D97706' },
-    { id: 'risk', label: 'Risk', sublabel: 'CAPA · Field Safety', x: 340, y: 264, w: 140, h: 44, status: getAgentStatus('Risk'), color: '#DC2626' },
-    { id: 'report', label: 'Report', sublabel: 'Synthesis · Export', x: 560, y: 166, w: 140, h: 44, status: getAgentStatus('Report'), color: '#7C3AED' },
-    { id: 'end', label: 'END', x: 770, y: 185, type: 'circle' as const, r: 22, status: 'done' as const },
+    { id: 'supervisor', label: 'Supervisor', sublabel: 'Coordinator', x: 120, y: 166, w: 140, h: 44, status: supervisorStatus, color: '#6366F1' },
+    { id: 'regulatory', label: 'Regulatory', sublabel: 'FDA · MDR · EU MDR', x: 340, y: 30, w: 140, h: 44, status: regulatoryStatus, color: '#0891B2' },
+    { id: 'clinical', label: 'Clinical', sublabel: 'AE · MedDRA · Safety', x: 340, y: 108, w: 140, h: 44, status: clinicalStatus, color: '#059669' },
+    { id: 'technical', label: 'Technical', sublabel: 'Telemetry · Root Cause', x: 340, y: 186, w: 140, h: 44, status: technicalStatus, color: '#D97706' },
+    { id: 'risk', label: 'Risk', sublabel: 'CAPA · Field Safety', x: 340, y: 264, w: 140, h: 44, status: riskStatus, color: '#DC2626' },
+    { id: 'report', label: 'Report', sublabel: 'Synthesis · Export', x: 560, y: 166, w: 140, h: 44, status: reportStatus, color: '#7C3AED' },
+    { id: 'end', label: 'END', x: 770, y: 185, type: 'circle' as const, r: 22, status: endNodeStatus },
   ];
 
   const edges = [
@@ -149,18 +206,21 @@ export function GraphTab() {
             LangGraph Workflow
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Multi-agent coordination graph for MDR-2024-0891 · All nodes
-            completed
+            Multi-agent coordination graph · {streaming ? "Agents processing" : "All nodes completed"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
             Completed
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
             Active
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+            Idle
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
@@ -185,6 +245,17 @@ export function GraphTab() {
             >
               <path d="M0,0 L0,6 L6,3 z" fill="#CBD5E1" />
             </marker>
+            <style>
+              {`
+                @keyframes pulse-active {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.6; }
+                }
+                .active-indicator {
+                  animation: pulse-active 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+                }
+              `}
+            </style>
           </defs>
 
           {/* Edges */}
@@ -219,79 +290,96 @@ export function GraphTab() {
           {/* Start/End circles */}
           {nodes
             .filter((n) => n.type === 'circle')
-            .map((n) => (
-              <g key={n.id}>
-                <circle cx={n.x} cy={n.y} r={n.r} fill="#0F172A" />
-                <text
-                  x={n.x}
-                  y={n.y + 4}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fontWeight="600"
-                  fill="white"
-                  fontFamily="JetBrains Mono, monospace"
-                >
-                  {n.label}
-                </text>
-                <circle
-                  cx={n.x + (n.r! - 4)}
-                  cy={n.y - (n.r! - 4)}
-                  r={5}
-                  fill="#22C55E"
-                />
-              </g>
-            ))}
+            .map((n) => {
+              const indicatorColor = getStatusIndicatorColor(n.status as AgentStatus);
+              return (
+                <g key={n.id}>
+                  <circle cx={n.x} cy={n.y} r={n.r} fill="#0F172A" />
+                  <text
+                    x={n.x}
+                    y={n.y + 4}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fontWeight="600"
+                    fill="white"
+                    fontFamily="JetBrains Mono, monospace"
+                  >
+                    {n.label}
+                  </text>
+                  <circle
+                    cx={n.x + (n.r! - 4)}
+                    cy={n.y - (n.r! - 4)}
+                    r={5}
+                    fill={indicatorColor}
+                  />
+                </g>
+              );
+            })}
 
           {/* Agent nodes */}
           {nodes
             .filter((n) => !n.type)
-            .map((n) => (
-              <g key={n.id}>
-                <rect
-                  x={n.x}
-                  y={n.y}
-                  width={n.w}
-                  height={n.h}
-                  rx="6"
-                  fill="white"
-                  stroke={n.color}
-                  strokeWidth="1.5"
-                />
-                <rect
-                  x={n.x}
-                  y={n.y}
-                  width={4}
-                  height={n.h}
-                  rx="2"
-                  fill={n.color}
-                />
-                <text
-                  x={n.x + 16}
-                  y={n.y + 17}
-                  fontSize="11"
-                  fontWeight="600"
-                  fill={n.color}
-                  fontFamily="Inter, sans-serif"
-                >
-                  {n.label}
-                </text>
-                <text
-                  x={n.x + 16}
-                  y={n.y + 31}
-                  fontSize="9"
-                  fill="#94A3B8"
-                  fontFamily="Inter, sans-serif"
-                >
-                  {n.sublabel}
-                </text>
-                <circle
-                  cx={n.x + n.w! - 10}
-                  cy={n.y + 12}
-                  r={5}
-                  fill="#22C55E"
-                />
-              </g>
-            ))}
+            .map((n) => {
+              const indicatorColor = getStatusIndicatorColor(n.status as AgentStatus);
+              const isActive = n.status === 'active';
+              return (
+                <g key={n.id}>
+                  <rect
+                    x={n.x}
+                    y={n.y}
+                    width={n.w}
+                    height={n.h}
+                    rx="6"
+                    fill="white"
+                    stroke={n.color}
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={n.x}
+                    y={n.y}
+                    width={4}
+                    height={n.h}
+                    rx="2"
+                    fill={n.color}
+                  />
+                  <text
+                    x={n.x + 16}
+                    y={n.y + 17}
+                    fontSize="11"
+                    fontWeight="600"
+                    fill={n.color}
+                    fontFamily="Inter, sans-serif"
+                  >
+                    {n.label}
+                  </text>
+                  <text
+                    x={n.x + 16}
+                    y={n.y + 31}
+                    fontSize="9"
+                    fill="#94A3B8"
+                    fontFamily="Inter, sans-serif"
+                  >
+                    {n.sublabel}
+                  </text>
+                  {isActive && (
+                    <circle
+                      cx={n.x + n.w! - 10}
+                      cy={n.y + 12}
+                      r={7}
+                      fill={indicatorColor}
+                      className="active-indicator"
+                      opacity="0.3"
+                    />
+                  )}
+                  <circle
+                    cx={n.x + n.w! - 10}
+                    cy={n.y + 12}
+                    r={5}
+                    fill={indicatorColor}
+                  />
+                </g>
+              );
+            })}
         </svg>
       </div>
 

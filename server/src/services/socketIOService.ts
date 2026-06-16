@@ -32,12 +32,28 @@ export const broadcastAgentActivity = (investigationId: string, activity: any) =
 };
 
 export const broadcastWorkflowUpdate = (
-  incidentId: string,
-  update: { phase: string; status: string }
+  investigationId: string,
+  update: { phase: string; status: string; incidentStatus?: string; incidentSeverity?: string }
 ) => {
   const io = (global as any).io as SocketIOServer;
   if (io) {
-    console.log(`[BROADCAST] Sending workflow update to investigation-${incidentId}:`, update);
-    io.to(`investigation-${incidentId}`).emit("workflow-update", update);
+    console.log(`[BROADCAST] Sending workflow update to investigation-${investigationId}:`, update);
+    io.to(`investigation-${investigationId}`).emit("workflow-update", update);
+  }
+};
+
+export const broadcastDashboardStatsUpdate = (stats: {
+  totalIncidents: number;
+  activeInvestigations: number;
+  criticalCases: number;
+  pendingReviews: number;
+}) => {
+  const io = (global as any).io as SocketIOServer;
+  if (io) {
+    console.log(`[BROADCAST] Sending dashboard stats update:`, stats);
+    io.emit("dashboard-stats-update", {
+      ...stats,
+      updatedAt: new Date().toISOString(),
+    });
   }
 };

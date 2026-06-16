@@ -77,18 +77,27 @@ export const runInvestigationWorkflow = async (incident: IncidentData) => {
       data: { phase: "Review" },
     });
 
+    // Update incident status to InReview
+    const updatedIncident = await prisma.incident.update({
+      where: { id: incident.id },
+      data: { status: "InReview" },
+    });
+
     await prisma.auditLog.create({
       data: {
         investigationId: investigation.id,
         action: 'workflow_completed',
-        details: JSON.stringify({ phase: 'Review' }),
+        details: JSON.stringify({ phase: 'Review', incidentStatus: 'InReview' }),
       },
     });
-    console.log(`[WORKFLOW] Investigation status changed to Review`);
+    console.log(`[WORKFLOW] Investigation status changed to Review, Incident status changed to InReview`);
 
+    // Broadcast status update via Socket.IO
     broadcastWorkflowUpdate(investigation.id, {
       phase: "Complete",
       status: "done",
+      incidentStatus: updatedIncident.status,
+      incidentSeverity: updatedIncident.severity,
     });
   } catch (error) {
     console.error(`[WORKFLOW] Investigation workflow failed for ${incident.incidentNumber}:`, error);

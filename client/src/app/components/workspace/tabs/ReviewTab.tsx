@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
-import { useSelector } from 'react-redux';
-import { Check, X, ThumbsUp, ThumbsDown, RefreshCw, Send, Loader2 } from 'lucide-react';
+import { useSelector, useDispatch } from 'react-redux';
+import { Check, X, ThumbsUp, RefreshCw, Send, Loader2 } from 'lucide-react';
+import { setProcessing } from '../../../../store/investigationSlice';
+import type { AppDispatch, RootState } from '../../../../store/store';
 import {
   Sheet,
   SheetContent,
@@ -10,89 +12,89 @@ import {
   SheetDescription,
   SheetFooter,
 } from '../../ui/sheet';
-import type { RootState } from '../../../store/store';
 import { API_ENDPOINTS } from '../../../../api/config';
+import { useInvestigationSocket } from '../../../../hooks/useInvestigationSocket';
 
 interface Recommendation {
   id: string;
-  icon: React.ElementType;
   label: string;
-  color: 'blue' | 'red' | 'green';
+  color: 'blue' | 'red' | 'green' | 'purple';
   text: string;
   details: string;
   context: string[];
+  agentType?: string;
 }
 
-const RECOMMENDATIONS: Recommendation[] = [
-  {
-    id: 'regulatory',
-    icon: () => null,
-    label: 'Regulatory',
-    color: 'blue',
-    text: 'Approve and file 30-day MDR with FDA within regulatory deadline (Feb 14, 2024)',
-    details:
-      'This recommendation ensures compliance with FDA regulations 21 CFR 803.50(a)(1) for serious device malfunctions. The 30-day MDR (Medical Device Report) filing deadline is mandatory and must include detailed incident analysis and corrective actions.',
-    context: [
-      '• 3 prior MAUDE reports establish a pattern of similar E-04 failures',
-      '• This is a serious non-fatal adverse event requiring immediate reporting',
-      '• EU MDR Article 87 vigilance report also recommended for European markets',
-    ],
-  },
-  {
-    id: 'risk',
-    icon: () => null,
-    label: 'Risk',
-    color: 'red',
-    text: 'Issue Field Safety Corrective Action for 2,400 devices — immediate firmware patch deployment',
-    details:
-      'Approximately 2,400 CardioSync Pro 3000 devices with firmware v3.4.1 are currently active in the field across 340 facilities. An immediate Field Safety Corrective Action (FSCA) is critical to prevent similar incidents.',
-    context: [
-      '• Risk score: 9.2/10 (CRITICAL)',
-      '• Affected population: 2,400 devices in 340 facilities across 28 states',
-      '• Firmware patch v3.4.2 is available and addresses the race condition',
-      '• Estimated harm probability: 0.34 per device-year under high lead impedance',
-    ],
-  },
-  {
-    id: 'clinical',
-    icon: () => null,
-    label: 'Clinical',
-    color: 'green',
-    text: 'Notify treating physicians and update patient risk profiles for ICD patients on v3.4.1',
-    details:
-      'Clinical teams at all implanting centers and device follow-up clinics must be immediately notified of the device issue and potential patient safety implications. Updated risk profiles should be generated for all patients with affected devices.',
-    context: [
-      '• Serious non-fatal adverse event (MedDRA code 10065722)',
-      '• Patient in this case recovered without permanent injury',
-      '• Lead impedance monitoring should be enhanced for all affected patients',
-      '• Post-market surveillance review recommended for all E-04 events',
-    ],
-  },
-];
-
-interface Recommendation {
-  id: string;
-  icon: React.ElementType;
-  label: string;
-  color: 'blue' | 'red' | 'green';
-  text: string;
-  details: string;
-  context: string[];
+interface ReviewComment {
+  id?: string;
+  reviewer: string;
+  comment: string;
+  timestamp: string;
+  reviewStatus?: string;
 }
 
 export function ReviewTab() {
   const { id } = useParams();
+  const dispatch = useDispatch<AppDispatch>();
   const { token } = useSelector((state: RootState) => state.auth);
+  const saving = useSelector((state: RootState) => state.investigation.isProcessing);
   const [comment, setComment] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
   const [selectedReco, setSelectedReco] = useState<string | null>(null);
   const [acceptedRecos, setAcceptedRecos] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loadingRecos, setLoadingRecos] = useState(true);
+  const [reviewComments, setReviewComments] = useState<ReviewComment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(true);
+
+  const fetchRecommendations = async () => {
+    if (!id || !token) return;
+
+    try {
+      const response = await fetch(API_ENDPOINTS.investigationReport(id!), {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Map backend recommendations to UI format
+        const mappedRecos = (data.recommendations || []).map((reco: any) => ({
+          id: reco.id || reco.label?.toLowerCase(),
+          label: reco.label,
+          color: reco.color || 'blue',
+          text: reco.text,
+          details: reco.details || '',
+          context: reco.context || [],
+          agentType: reco.agentType,
+        }));
+        setRecommendations(mappedRecos);
+      }
+    } catch (error) {
+      console.error('[REVIEW] Failed to fetch recommendations:', error);
+    } finally {
+      setLoadingRecos(false);
+    }
+  };
+
+  // Handle agent activity updates to refresh recommendations when agents complete
+  const handleActivityUpdate = (activity: any) => {
+    if (
+      activity.status === 'completed' ||
+      activity.status === 'finished' ||
+      activity.message?.toLowerCase().includes('completed')
+    ) {
+      fetchRecommendations();
+    }
+  };
+
+  useInvestigationSocket(id || '', handleActivityUpdate);
 
   useEffect(() => {
-    const fetchRecommendations = async () => {
+    fetchRecommendations();
+  }, [id, token]);
+
+  useEffect(() => {
+    const fetchReviewComments = async () => {
       if (!id || !token) return;
 
       try {
@@ -102,29 +104,41 @@ export function ReviewTab() {
 
         if (response.ok) {
           const data = await response.json();
-          // Map backend recommendations to UI format
-          const mappedRecos = data.recommendations.map((reco: any) => ({
-            ...reco,
-            icon: () => null,
-          }));
-          setRecommendations(mappedRecos);
+          // Map review comments from investigation data
+          const comments: ReviewComment[] = (data.reviewComments || []).map((comment: any) => {
+            const timestamp = new Date(comment.createdAt || comment.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+
+            return {
+              id: comment.id,
+              reviewer: comment.reviewer || 'Reviewer',
+              comment: comment.comment || comment.text,
+              timestamp,
+              reviewStatus: comment.reviewStatus,
+            };
+          });
+          setReviewComments(comments);
         }
       } catch (error) {
-        console.error('[REVIEW] Failed to fetch recommendations:', error);
+        console.error('[REVIEW] Failed to fetch review comments:', error);
       } finally {
-        setLoadingRecos(false);
+        setLoadingComments(false);
       }
     };
 
-    fetchRecommendations();
+    fetchReviewComments();
   }, [id, token]);
 
-  const saveReview = async (status: 'approved' | 'rejected' | 'more-analysis') => {
+  const approveAndGenerateReport = async () => {
     if (!id || !token) return;
 
-    setSaving(true);
+    dispatch(setProcessing(true));
     try {
-      await fetch(API_ENDPOINTS.investigationReview(id!), {
+      const response = await fetch(API_ENDPOINTS.investigationReview(id!), {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -132,40 +146,113 @@ export function ReviewTab() {
         },
         body: JSON.stringify({
           reviewNotes: comment,
-          reviewStatus: status,
+          reviewStatus: 'approved',
           recommendations: Array.from(acceptedRecos),
+          generateReport: true,
         }),
       });
+
+      if (response.ok) {
+        // Add comment to review history
+        const newComment: ReviewComment = {
+          reviewer: 'Current Reviewer',
+          comment: comment || 'Approved investigation and generated report',
+          timestamp: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          reviewStatus: 'approved',
+        };
+        setReviewComments((prev) => [newComment, ...prev]);
+        setComment('');
+      }
     } catch (error) {
-      console.error('[REVIEW] Failed to save review:', error);
+      console.error('[REVIEW] Failed to approve investigation:', error);
     } finally {
-      setSaving(false);
+      dispatch(setProcessing(false));
     }
   };
 
-  const history = [
-    {
-      user: 'Dr. Marcus Liu',
-      action: 'Requested additional technical analysis',
-      time: 'Jan 16, 14:22',
-      type: 'request',
-    },
-    {
-      user: 'Technical Agent',
-      action: 'Supplemental analysis: Lead impedance correlation confirmed',
-      time: 'Jan 16, 15:05',
-      type: 'agent',
-    },
-    {
-      user: 'Dr. Sarah Chen',
-      action: 'Assigned as primary reviewer',
-      time: 'Jan 17, 09:00',
-      type: 'assign',
-    },
-  ];
+  const requestMoreAnalysis = async () => {
+    if (!id || !token) return;
+
+    dispatch(setProcessing(true));
+    try {
+      // Step 1: Save the review with rerunWorkflow flag
+      const reviewResponse = await fetch(API_ENDPOINTS.investigationReview(id!), {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reviewNotes: comment,
+          reviewStatus: 'more-analysis',
+          recommendations: Array.from(acceptedRecos),
+          rerunWorkflow: true,
+        }),
+      });
+
+      if (reviewResponse.ok) {
+        // Add comment to review history
+        const newComment: ReviewComment = {
+          reviewer: 'Current Reviewer',
+          comment: comment || 'Requested more analysis - workflow will re-run with reviewer feedback',
+          timestamp: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          reviewStatus: 'more-analysis',
+        };
+        setReviewComments((prev) => [newComment, ...prev]);
+        setComment('');
+
+        // Step 2: Trigger the workflow re-run with reviewer feedback
+        const rerunResponse = await fetch(API_ENDPOINTS.investigationRerunWorkflow(id!), {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (rerunResponse.ok) {
+          console.log('[REVIEW] Workflow re-run triggered - agents will re-analyze with reviewer feedback');
+          // WebSocket will automatically reactivate as the phase changes back to Analysis
+          // Live agent activity updates will appear as agents process the reviewer feedback
+        }
+      }
+    } catch (error) {
+      console.error('[REVIEW] Failed to request more analysis:', error);
+    } finally {
+      dispatch(setProcessing(false));
+    }
+  };
+
+  const addCommentOnly = async () => {
+    if (!comment.trim()) return;
+
+    // Add comment to review history without changing status
+    const newComment: ReviewComment = {
+      reviewer: 'Current Reviewer',
+      comment: comment,
+      timestamp: new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+    setReviewComments((prev) => [newComment, ...prev]);
+    setComment('');
+  };
 
   const currentReco = selectedReco
-    ? RECOMMENDATIONS.find((r) => r.id === selectedReco)
+    ? recommendations.find((r) => r.id === selectedReco)
     : null;
 
   return (
@@ -208,23 +295,15 @@ export function ReviewTab() {
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <button
-            onClick={() => saveReview('approved')}
+            onClick={approveAndGenerateReport}
             disabled={saving}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
-            Approve Investigation
+            Approve & Generate Report
           </button>
           <button
-            onClick={() => saveReview('rejected')}
-            disabled={saving}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <ThumbsDown size={16} />}
-            Reject
-          </button>
-          <button
-            onClick={() => saveReview('more-analysis')}
+            onClick={requestMoreAnalysis}
             disabled={saving}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-background border border-border text-foreground text-sm font-medium rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -342,11 +421,11 @@ export function ReviewTab() {
             </div>
             <div className="flex justify-end">
               <button
-                onClick={() => saveReview('approved')}
-                disabled={saving || !comment.trim()}
+                onClick={addCommentOnly}
+                disabled={!comment.trim()}
                 className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                <Send size={14} />
                 Add Comment
               </button>
             </div>
@@ -363,43 +442,44 @@ export function ReviewTab() {
             </h4>
           </div>
           <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
-            {history.map((h, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 pb-3 last:pb-0 last:border-0 border-b border-border/50"
-              >
+            {loadingComments ? (
+              <p className="text-xs text-muted-foreground px-3 py-2">
+                Loading review comments...
+              </p>
+            ) : reviewComments.length > 0 ? (
+              reviewComments.map((review, i) => (
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-semibold ${
-                    h.type === 'agent'
-                      ? 'bg-violet-100 text-violet-700'
-                      : h.type === 'request'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-blue-100 text-blue-700'
-                  }`}
+                  key={review.id || i}
+                  className="flex items-start gap-3 pb-3 last:pb-0 last:border-0 border-b border-border/50"
                 >
-                  {h.type === 'agent'
-                    ? 'AI'
-                    : h.user
-                        .split(' ')
-                        .map((w) => w[0])
-                        .join('')
-                        .slice(0, 2)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-foreground">
-                      {h.user}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {h.time}
-                    </span>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-semibold bg-blue-100 text-blue-700">
+                    {review.reviewer
+                      .split(' ')
+                      .map((w) => w[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()}
                   </div>
-                  <p className="text-xs text-foreground mt-1 leading-snug">
-                    {h.action}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-foreground">
+                        {review.reviewer}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {review.timestamp}
+                      </span>
+                    </div>
+                    <p className="text-xs text-foreground mt-1 leading-snug">
+                      {review.comment}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-xs text-muted-foreground px-3 py-2">
+                No review comments yet
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -414,20 +494,29 @@ function RecoItem({
   accepted,
 }: {
   label: string;
-  color: 'blue' | 'red' | 'green';
+  color: 'blue' | 'red' | 'green' | 'purple';
   text: string;
   accepted?: boolean;
 }) {
-  const bgColors = {
+  const bgColors: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-100',
     red: 'bg-red-50 border-red-100',
     green: 'bg-green-50 border-green-100',
+    purple: 'bg-purple-50 border-purple-100',
   };
-  const labelColors = {
+  const labelColors: Record<string, string> = {
     blue: 'text-blue-700',
     red: 'text-red-700',
     green: 'text-green-700',
+    purple: 'text-purple-700',
   };
+  const dotColors: Record<string, string> = {
+    blue: 'bg-blue-600',
+    red: 'bg-red-600',
+    green: 'bg-green-600',
+    purple: 'bg-purple-600',
+  };
+
   return (
     <div
       className={`flex items-start gap-3 p-3 border rounded-md cursor-pointer transition-colors ${
@@ -435,11 +524,7 @@ function RecoItem({
       }`}
     >
       <div className="mt-0.5 flex-shrink-0">
-        <div
-          className={`w-4 h-4 rounded ${
-            color === 'blue' ? 'bg-blue-600' : color === 'red' ? 'bg-red-600' : 'bg-green-600'
-          }`}
-        />
+        <div className={`w-4 h-4 rounded ${dotColors[color]}`} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">

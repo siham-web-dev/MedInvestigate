@@ -1,5 +1,6 @@
 import prisma from '../db/client'
 import { AppError } from '../middleware/errorHandler'
+import { runInvestigationWorkflow } from './agentOrchestrator'
 
 export interface CreateInvestigationInput {
   incidentId: string
@@ -125,25 +126,120 @@ export const getAgentActivityLogs = async (investigationId: string) => {
 
 export const updateInvestigationReview = async (
   id: string,
-  data: { reviewNotes?: string; reviewStatus?: string; recommendations?: unknown }
+  data: {
+    reviewNotes?: string
+    reviewStatus?: string
+    recommendations?: unknown
+    generateReport?: boolean
+    rerunWorkflow?: boolean
+  }
 ) => {
-  const investigation = await prisma.investigation.update({
+  const investigation = await prisma.investigation.findUnique({
     where: { id },
-    data: {
-      notes: data.reviewNotes,
-      findings: data.recommendations ? JSON.stringify(data.recommendations) : undefined,
-    },
+    include: { incident: true },
   })
 
+  if (!investigation) {
+    throw new AppError(404, 'Investigation not found')
+  }
+
+  const updateData: any = {}
+  if (data.reviewNotes) updateData.notes = data.reviewNotes
+  if (data.recommendations) updateData.findings = JSON.stringify(data.recommendations)
+
+  // Handle approve and generate report
+  if (data.generateReport && investigation.incident.status === 'Completed') {
+    updateData.phase = 'Closed'
+
+    // Create a report generation task
+    await prisma.agentTask.create({
+      data: {
+        investigationId: id,
+        type: 'ReportGeneration',
+        status: 'Pending',
+      },
+    })
+
+    // Log report generation activity
+    await prisma.agentActivity.create({
+      data: {
+        incidentId: investigation.incidentId,
+        agentType: 'Report',
+        agentName: 'Report Generator',
+        timestamp: new Date(),
+        status: 'Info',
+        message: 'Report generation initiated - detailed 5-12 page report will be generated',
+      },
+    })
+  }
+
+  // Handle request for more analysis (re-run workflow)
+  if (data.rerunWorkflow) {
+    updateData.phase = 'Analysis'
+
+    // Reset agent tasks to pending so they re-run
+    await prisma.agentTask.updateMany({
+      where: { investigationId: id },
+      data: { status: 'Pending', completedAt: null, startedAt: null },
+    })
+
+    // Store reviewer feedback in investigation notes for agents to consider
+    if (data.reviewNotes) {
+      const existingNotes = investigation.notes ? investigation.notes : ''
+      const reviewFeedback = `\n\n[REVIEWER FEEDBACK FOR RE-ANALYSIS]\n${new Date().toISOString()}\n${data.reviewNotes}`
+      updateData.notes = existingNotes + reviewFeedback
+    }
+
+    // Log workflow re-run activity with detailed feedback
+    await prisma.agentActivity.create({
+      data: {
+        incidentId: investigation.incidentId,
+        agentType: 'Supervisor',
+        agentName: 'Workflow Manager',
+        timestamp: new Date(),
+        status: 'Info',
+        message: `Workflow re-run initiated with reviewer feedback: "${data.reviewNotes || 'No specific feedback provided'}"`,
+        resultData: JSON.stringify({
+          action: 'workflow_rerun',
+          reviewerFeedback: data.reviewNotes,
+          timestamp: new Date().toISOString(),
+        }),
+      },
+    })
+  }
+
+  const updatedInvestigation = await prisma.investigation.update({
+    where: { id },
+    data: updateData,
+  })
+
+  // Store review comment if provided
+  if (data.reviewNotes) {
+    await prisma.reviewComment.create({
+      data: {
+        investigationId: id,
+        reviewer: 'Current Reviewer',
+        comment: data.reviewNotes,
+        reviewStatus: data.reviewStatus,
+      },
+    })
+  }
+
+  // Create audit log for review action
   await prisma.auditLog.create({
     data: {
       investigationId: id,
       action: 'review_updated',
-      details: JSON.stringify({ reviewStatus: data.reviewStatus }),
+      details: JSON.stringify({
+        reviewStatus: data.reviewStatus,
+        generateReport: data.generateReport,
+        rerunWorkflow: data.rerunWorkflow,
+        reviewNotesLength: data.reviewNotes?.length || 0,
+      }),
     },
   })
 
-  return investigation
+  return updatedInvestigation
 }
 
 export const getInvestigationReport = async (id: string) => {
@@ -152,6 +248,9 @@ export const getInvestigationReport = async (id: string) => {
     include: {
       incident: true,
       agentTasks: true,
+      reviewComments: {
+        orderBy: { createdAt: 'desc' },
+      },
     },
   })
 
@@ -159,17 +258,47 @@ export const getInvestigationReport = async (id: string) => {
     throw new AppError(404, 'Investigation not found')
   }
 
-  // Fetch agent activities for this investigation
-  const agentActivities = await prisma.agentActivity.findMany({
-    where: { incidentId: investigation.incidentId },
-    orderBy: { timestamp: 'asc' },
-  })
+  // Fetch structured findings from the incident
+  const [rootCauses, regulatoryFindings, clinicalEvidence, technicalFindings, agentActivities] =
+    await Promise.all([
+      prisma.rootCauseHypothesis.findMany({
+        where: { incidentId: investigation.incidentId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.regulatoryFinding.findMany({
+        where: { incidentId: investigation.incidentId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.clinicalEvidence.findMany({
+        where: { incidentId: investigation.incidentId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.technicalFinding.findMany({
+        where: { incidentId: investigation.incidentId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.agentActivity.findMany({
+        where: { incidentId: investigation.incidentId },
+        orderBy: { timestamp: 'asc' },
+      }),
+    ])
 
   // Generate recommendations based on agent activities
   const recommendations = generateRecommendations(agentActivities, investigation)
 
-  // Get findings from investigation notes
-  const findings = investigation.findings ? JSON.parse(investigation.findings) : []
+  // Map review comments to frontend format
+  const reviewComments = investigation.reviewComments.map((comment) => ({
+    id: comment.id,
+    reviewer: comment.reviewer,
+    comment: comment.comment,
+    timestamp: comment.createdAt.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    reviewStatus: comment.reviewStatus,
+  }))
 
   return {
     incidentNumber: investigation.incident.incidentNumber,
@@ -180,10 +309,51 @@ export const getInvestigationReport = async (id: string) => {
     incidentDate: investigation.incident.incidentDate,
     description: investigation.incident.description,
     recommendations,
-    findings,
+    reviewComments,
+    rootCauses,
+    regulatoryFindings,
+    clinicalEvidence,
+    technicalFindings,
     agentActivities,
     phase: investigation.phase,
     notes: investigation.notes,
+  }
+}
+
+export const rerunInvestigationWorkflow = async (id: string) => {
+  const investigation = await prisma.investigation.findUnique({
+    where: { id },
+    include: {
+      incident: true,
+    },
+  })
+
+  if (!investigation) {
+    throw new AppError(404, 'Investigation not found')
+  }
+
+  // Get reviewer feedback from investigation notes
+  const reviewerFeedback = investigation.notes || ''
+
+  console.log(`[WORKFLOW] Re-running investigation ${investigation.incidentId} with reviewer feedback`)
+
+  // Trigger the workflow with the incident data and investigation ID
+  await runInvestigationWorkflow({
+    id: investigation.incidentId,
+    incidentNumber: investigation.incident.incidentNumber,
+    severity: investigation.incident.severity,
+    description: investigation.incident.description,
+    facility: investigation.incident.facility,
+    deviceName: investigation.incident.deviceName,
+    manufacturer: investigation.incident.manufacturer,
+    incidentDate: investigation.incident.incidentDate.toISOString(),
+    investigationId: id,
+  })
+
+  return {
+    message: 'Investigation workflow re-run initiated with reviewer feedback',
+    investigationId: id,
+    reviewerFeedback: reviewerFeedback,
   }
 }
 

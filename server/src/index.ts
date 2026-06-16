@@ -7,6 +7,7 @@ import authRouter from "./routes/auth";
 import incidentsRouter from "./routes/incidents";
 import investigationsRouter from "./routes/investigations";
 import agentsRouter from "./routes/agents";
+import dashboardRouter from "./routes/dashboard";
 import { initializeSocketIO } from "./services/socketIOService";
 
 const app = express();
@@ -38,6 +39,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/incidents", incidentsRouter);
 app.use("/api/investigations", investigationsRouter);
 app.use("/api/agents", agentsRouter);
+app.use("/api/dashboard", dashboardRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler);
